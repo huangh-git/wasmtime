@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["lookup","Look for an ISA for the given target triple."]],"trait":[["TargetIsa","A trait representing commonalities between the supported instruction set architectures."]]};

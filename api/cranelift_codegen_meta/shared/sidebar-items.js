@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["define",""]],"mod":[["entities",""],["formats",""],["immediates",""],["instructions",""],["settings",""],["types","This module predefines all the Cranelift scalar types."]],"struct":[["Definitions",""]]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["generate_table","Compute an open addressed, quadratically probed hash table containing `items`. The returned table is a list containing the elements of the iterable `items` and `None` in unused slots."]]};

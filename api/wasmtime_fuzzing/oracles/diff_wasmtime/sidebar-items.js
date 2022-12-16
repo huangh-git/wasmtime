@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":[["WasmtimeEngine","A wrapper for using Wasmtime as a [`DiffEngine`]."],["WasmtimeInstance","A wrapper around a Wasmtime instance."]]};

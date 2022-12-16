@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":[["Advice",""],["FileType",""]],"struct":[["FdFlags",""],["FdStat",""],["FileCaps",""],["Filestat",""],["OFlags",""],["RiFlags",""],["RoFlags",""],["SdFlags",""],["SiFlags",""]],"trait":[["FileEntryExt",""],["WasiFile",""]]};

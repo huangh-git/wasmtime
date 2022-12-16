@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":[["FuzzGen",""],["SingleFunction","Simple wrapper to generate a single Cranelift `Function`."],["TestCase",""]],"type":[["TestCaseInput",""]]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["add_to_linker","Adds all instance items to the specified `Linker`."]],"struct":[["WasiNnCtx","Capture the state necessary for calling into the backend ML libraries."]]};

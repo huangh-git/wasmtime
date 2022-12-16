@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":[["FuncIndex","An opaque reference to a `Function` stored in the [FunctionStore]."],["FunctionStore","A function store contains all of the functions that are accessible to an interpreter."]]};

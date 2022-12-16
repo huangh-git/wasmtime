@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":[["Deterministic","Implement `WasiRandom` using a deterministic cycle of bytes."]]};

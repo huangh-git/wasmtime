@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":[["subscription",""]],"struct":[["Duration","A `Duration` type to represent a span of time, typically used for system timeouts."],["Poll",""],["Userdata",""]],"trait":[["WasiSched",""]],"type":[["PollResults",""]]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":[["REALLOC_AND_FREE","A simple bump allocator which can be used with modules"]],"enum":[["DiscriminantSize","Represents the possible sizes in bytes of the discriminant of a variant type in the component model"],["FlagsSize","Represents the number of bytes required to store a flags value in the component model"]]};

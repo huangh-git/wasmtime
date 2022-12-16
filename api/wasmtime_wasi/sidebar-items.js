@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":[["sync","Re-export the commonly used wasi-cap-std-sync crate here. This saves consumers of this library from having to keep additional dependencies in sync."]],"struct":[["Error",""],["I32Exit","An error returned from the `proc_exit` host syscall."],["WasiCtx",""]],"trait":[["WasiDir",""],["WasiFile",""]]};
