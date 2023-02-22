@@ -317,6 +317,8 @@ impl Metadata {
 
             // Just a debugging aid, doesn't affect functionality at all.
             debug_adapter_modules: _,
+
+            mem_ref: _,
         } = self.tunables;
 
         Self::check_int(

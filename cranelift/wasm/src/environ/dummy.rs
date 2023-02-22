@@ -277,7 +277,7 @@ impl<'dummy_environment> FuncEnvironment for DummyFuncEnvironment<'dummy_environ
                 WasmType::I64 => ir::types::I64,
                 WasmType::F32 => ir::types::F32,
                 WasmType::F64 => ir::types::F64,
-                WasmType::V128 => ir::types::I8X16,
+                WasmType::V128 | WasmType::MemRef => ir::types::I8X16,
                 WasmType::FuncRef | WasmType::ExternRef => ir::types::R64,
             },
         })
@@ -685,7 +685,7 @@ impl<'data> ModuleEnvironment<'data> for DummyEnvironment {
                 WasmType::I64 => ir::types::I64,
                 WasmType::F32 => ir::types::F32,
                 WasmType::F64 => ir::types::F64,
-                WasmType::V128 => ir::types::I8X16,
+                WasmType::V128 | WasmType::MemRef => ir::types::I8X16,
                 WasmType::FuncRef | WasmType::ExternRef => reference_type,
             })
         };

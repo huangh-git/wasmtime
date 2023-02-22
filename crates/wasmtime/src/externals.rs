@@ -292,7 +292,7 @@ impl Global {
                 ValType::FuncRef => {
                     Val::FuncRef(Func::from_raw(store, definition.as_anyfunc() as usize))
                 }
-                ValType::V128 => Val::V128(*definition.as_u128()),
+                ValType::V128 | ValType::MemRef => Val::V128(*definition.as_u128()),
             }
         }
     }

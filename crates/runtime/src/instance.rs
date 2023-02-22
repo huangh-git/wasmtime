@@ -997,6 +997,7 @@ impl Instance {
             ptr::write(to, VMGlobalDefinition::new());
 
             match global.initializer {
+                GlobalInit::MemRefConst(x) => *(*to).as_u128_mut() = x,
                 GlobalInit::I32Const(x) => *(*to).as_i32_mut() = x,
                 GlobalInit::I64Const(x) => *(*to).as_i64_mut() = x,
                 GlobalInit::F32Const(x) => *(*to).as_f32_bits_mut() = x,

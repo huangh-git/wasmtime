@@ -29,6 +29,8 @@ pub enum WasmType {
     FuncRef,
     /// ExternRef type
     ExternRef,
+    /// MemRef Type
+    MemRef,
 }
 
 impl TryFrom<wasmparser::ValType> for WasmType {
@@ -43,6 +45,7 @@ impl TryFrom<wasmparser::ValType> for WasmType {
             V128 => Ok(WasmType::V128),
             FuncRef => Ok(WasmType::FuncRef),
             ExternRef => Ok(WasmType::ExternRef),
+            MemRef => Ok(WasmType::MemRef),
         }
     }
 }
@@ -57,6 +60,7 @@ impl From<WasmType> for wasmparser::ValType {
             WasmType::V128 => wasmparser::ValType::V128,
             WasmType::FuncRef => wasmparser::ValType::FuncRef,
             WasmType::ExternRef => wasmparser::ValType::ExternRef,
+            WasmType::MemRef => wasmparser::ValType::MemRef,
         }
     }
 }
@@ -71,6 +75,7 @@ impl fmt::Display for WasmType {
             WasmType::V128 => write!(f, "v128"),
             WasmType::ExternRef => write!(f, "externref"),
             WasmType::FuncRef => write!(f, "funcref"),
+            WasmType::MemRef => write!(f, "memref"),
         }
     }
 }
@@ -307,6 +312,8 @@ pub enum GlobalInit {
     RefFunc(FuncIndex),
     ///< The global is imported from, and thus initialized by, a different module.
     Import,
+    /// MemRefConst
+    MemRefConst(u128),
 }
 
 impl Global {

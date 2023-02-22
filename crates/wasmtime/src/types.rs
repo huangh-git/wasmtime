@@ -37,6 +37,8 @@ pub enum ValType {
     FuncRef,
     /// A reference to opaque data in the Wasm instance.
     ExternRef,
+    /// A 128bit pointer
+    MemRef,
 }
 
 impl fmt::Display for ValType {
@@ -49,6 +51,7 @@ impl fmt::Display for ValType {
             ValType::V128 => write!(f, "v128"),
             ValType::ExternRef => write!(f, "externref"),
             ValType::FuncRef => write!(f, "funcref"),
+            ValType::MemRef => write!(f, "memref"),
         }
     }
 }
@@ -58,7 +61,7 @@ impl ValType {
     /// `I64`, `F32`, `F64`).
     pub fn is_num(&self) -> bool {
         match self {
-            ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 => true,
+            ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::MemRef=> true,
             _ => false,
         }
     }
@@ -80,6 +83,7 @@ impl ValType {
             Self::V128 => WasmType::V128,
             Self::FuncRef => WasmType::FuncRef,
             Self::ExternRef => WasmType::ExternRef,
+            Self::MemRef => WasmType::MemRef,
         }
     }
 
@@ -92,6 +96,7 @@ impl ValType {
             WasmType::V128 => Self::V128,
             WasmType::FuncRef => Self::FuncRef,
             WasmType::ExternRef => Self::ExternRef,
+            WasmType::MemRef => Self::MemRef,
         }
     }
 }

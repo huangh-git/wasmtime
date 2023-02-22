@@ -138,7 +138,7 @@ impl Val {
             ValType::I64 => Val::I64(raw.get_i64()),
             ValType::F32 => Val::F32(raw.get_f32()),
             ValType::F64 => Val::F64(raw.get_f64()),
-            ValType::V128 => Val::V128(raw.get_v128()),
+            ValType::V128 | ValType::MemRef => Val::V128(raw.get_v128()),
             ValType::ExternRef => Val::ExternRef(ExternRef::from_raw(raw.get_externref())),
             ValType::FuncRef => Val::FuncRef(Func::from_raw(store, raw.get_funcref())),
         }

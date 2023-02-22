@@ -15,6 +15,7 @@ use cranelift_wasm::{
 use std::convert::TryFrom;
 use std::mem;
 use wasmparser::Operator;
+use cranelift_wasm::WasmType::MemRef;
 use wasmtime_environ::{
     BuiltinFunctionIndex, MemoryPlan, MemoryStyle, Module, ModuleTranslation, ModuleTypes, PtrSize,
     TableStyle, Tunables, VMOffsets, WASM_PAGE_SIZE,
@@ -187,6 +188,10 @@ impl<'module_environment> FuncEnvironment<'module_environment> {
             // functions should consume at least some fuel.
             fuel_consumed: 1,
         }
+    }
+
+    fn mem_ref(&self) -> bool {
+        self.tunables.mem_ref
     }
 
     fn pointer_type(&self) -> ir::Type {
@@ -1494,10 +1499,14 @@ impl<'module_environment> cranelift_wasm::FuncEnvironment for FuncEnvironment<'m
         }
 
         let (gv, offset) = self.get_global_location(func, index);
+        let ty = match self.module.globals[index].wasm_ty {
+            MemRef => ir::types::I32X4,
+            _ => super::value_type(self.isa, self.module.globals[index].wasm_ty)
+        };
         Ok(GlobalVariable::Memory {
             gv,
             offset: offset.into(),
-            ty: super::value_type(self.isa, self.module.globals[index].wasm_ty),
+            ty,
         })
     }
 

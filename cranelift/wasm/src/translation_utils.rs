@@ -39,6 +39,7 @@ where
                 wasmparser::ValType::V128 => &[wasmparser::ValType::V128],
                 wasmparser::ValType::ExternRef => &[wasmparser::ValType::ExternRef],
                 wasmparser::ValType::FuncRef => &[wasmparser::ValType::FuncRef],
+                wasmparser::ValType::MemRef => &[wasmparser::ValType::V128],
             };
             (
                 itertools::Either::Left(params.iter().copied()),
@@ -83,6 +84,9 @@ pub fn block_with_params<PE: TargetEnvironment + ?Sized>(
                 builder.append_block_param(block, environ.reference_type(ty.try_into()?));
             }
             wasmparser::ValType::V128 => {
+                builder.append_block_param(block, ir::types::I8X16);
+            }
+            wasmparser::ValType::MemRef => {
                 builder.append_block_param(block, ir::types::I8X16);
             }
         }

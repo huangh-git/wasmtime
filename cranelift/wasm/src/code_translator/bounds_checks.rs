@@ -330,6 +330,75 @@ where
     })
 }
 
+pub fn bounds_check_only<Env>(
+    builder: &mut FunctionBuilder,
+    env: &mut Env,
+    heap: &HeapData,
+    // Dynamic operand indexing into the heap.
+    index: ir::Value,
+) -> WasmResult<()>
+    where
+        Env: FuncEnvironment + ?Sized,
+{
+    let index = cast_index_to_pointer_ty(
+        index,
+        heap.index_type,
+        env.pointer_type(),
+        &mut builder.cursor(),
+    );
+
+    Ok(match heap.style {
+        //    2.b. Emit explicit `index > bound - (offset + access_size)` bounds
+        //         checks.
+        HeapStyle::Dynamic { bound_gv }=> {
+            let bound = builder.ins().global_value(env.pointer_type(), bound_gv);
+            let oob = builder
+                .ins()
+                .icmp(IntCC::UnsignedGreaterThan, index, bound);
+            builder.ins().trapnz(oob, ir::TrapCode::HeapOutOfBounds);
+        }
+
+        //    3.b. Emit the explicit `index > bound - (offset + access_size)`
+        //         check.
+        HeapStyle::Static { bound } => {
+            // See comment in 3.a. above.
+            let oob =
+                builder
+                    .ins()
+                    .icmp_imm(IntCC::UnsignedGreaterThan, index, bound as i64);
+            builder.ins().trapnz(oob, ir::TrapCode::HeapOutOfBounds);
+        }
+    })
+}
+
+pub fn compute_addr_with_no_bounds_check<Env>(
+    builder: &mut FunctionBuilder,
+    env: &mut Env,
+    heap: &HeapData,
+    // offset + addr.
+    addr_base: ir::Value,
+    // Static size of the heap access.
+    // access_size: u8,
+) -> WasmResult<Option<ir::Value>>
+    where
+        Env: FuncEnvironment + ?Sized,
+{
+    let addr_base = cast_index_to_pointer_ty(
+        addr_base,
+        heap.index_type,
+        env.pointer_type(),
+        &mut builder.cursor(),
+    );
+    Ok(Some(compute_addr(
+        &mut builder.cursor(),
+        heap,
+        env.pointer_type(),
+        addr_base,
+        0,
+        None,
+    )))
+}
+
 fn cast_index_to_pointer_ty(
     index: ir::Value,
     index_ty: ir::Type,
