@@ -361,21 +361,15 @@ impl<'a, 'data> ModuleEnvironment<'a, 'data> {
                         }
                         // no check, compiler does it
                         Operator::MemrefConst {addr, size, attr} => {
-                            let base = u128::from(addr) << 96;
-                            let size = u128::from(size) << 64;
-                            let attr = u128::from(attr) << 32;
-                            let addr = u128::from(addr);
-                            // let mut mem_ref :u128 = 0;
-                            // let mem_ref_ptr :*mut u128 = &mut mem_ref;
-                            // let mem_ref_ptr :*mut u32 = (mem_ref_ptr as *mut u128).cast();
-                            // unsafe {
-                            //     // reference to webassembly t1xN.extract_lane x
-                            //     // I32x4.extract_lane 1 is size here
-                            //     *mem_ref_ptr = addr;
-                            //     *mem_ref_ptr.add(1) = size;
-                            //     *mem_ref_ptr.add(2) = attr;
-                            //     *mem_ref_ptr.add(3) = addr;
-                            // }
+                            // mem_ref.0 is the highest, is addr
+                            let base = u128::from(addr);
+                            let size = u128::from(size) << 32;
+                            let attr = u128::from(attr) << 64;
+                            let addr = u128::from(addr) << 96;
+                            // let base_bytes :[u8;4] = addr.to_le_bytes();
+                            // let size_bytes :[u8;4] = size.to_le_bytes();
+                            // let attr_bytes :[u8;4] = attr.to_le_bytes();
+                            // let addr_bytes :[u8;4] = addr.to_le_bytes();
 
                             GlobalInit::MemRefConst(base | size | attr | addr)
                         }

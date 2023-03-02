@@ -152,10 +152,10 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             bounds_checks::bounds_check_only(builder, environ, &heap, addr)?;
             let size = builder.ins().iconst(I32, i64::from(*size));
             let attr = builder.ins().iconst(I32, i64::from(*attr));
-            let mem_ref = builder.ins().splat(I32X4, addr);
+            let mem_ref = builder.ins().splat(I32X4, attr);
+            let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
+            let mem_ref = builder.ins().insertlane(mem_ref, addr, 1);
             let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
-            let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
-            // let mem_ref = optionally_bitcast_vector(mem_ref, I16X8, builder);
             state.push1(mem_ref);
         }
         Operator::MemrefAdd => {
@@ -163,7 +163,6 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
             let addr = builder.ins().extractlane(mem_ref, 0);
             let res = builder.ins().iadd(val, addr);
-            // let mem_ref = optionally_bitcast_vector(mem_ref, I16X8, builder);
             state.push1(builder.ins().insertlane(mem_ref, res, 0));
         }
         Operator::MemrefAnd => {
@@ -172,7 +171,6 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let addr = builder.ins().extractlane(mem_ref, 0);
             let res = builder.ins().band(val, addr);
             let mem_ref = builder.ins().insertlane(mem_ref, res, 0);
-            // let mem_ref = optionally_bitcast_vector(mem_ref, I16X8, builder);
             state.push1(mem_ref);
         }
         Operator::MemrefMSStore { memarg } => {
@@ -215,6 +213,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             translate_msstore(mem_ref, memarg, ir::Opcode::Istore32, val, builder, state, environ)?;
         }
         Operator::MemrefMSLoad { memarg } => {
+            // opcode is not used
             translate_msload(memarg, ir::Opcode::Uload8, I32X4, builder, state, environ)?;
         }
         Operator::I32MSLoad8U { memarg } => {
@@ -310,14 +309,15 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                     // memref from high bit to low bit :base, size,attr, addr
                     // memref: addr-0, base-1, size-2, attr-3
                     if ty == ir::types::I32X4 {
-                        let (hi, lo) = builder.ins().vsplit(val);
-                        let (base, size) = builder.ins().isplit(hi);
-                        let (attr, addr) = builder.ins().isplit(lo);
-                        let mem_ref = builder.ins().splat(I32X4, addr);
-                        let mem_ref = builder.ins().insertlane(mem_ref, base, 1);
-                        let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
-                        let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
-                        mem_ref
+                        optionally_bitcast_vector(val, I32X4, builder)
+                        // let (hi, lo) = builder.ins().vsplit(val);
+                        // let (base, size) = builder.ins().isplit(hi);
+                        // let (attr, addr) = builder.ins().isplit(lo);
+                        // let mem_ref = builder.ins().splat(I32X4, attr);
+                        // let mem_ref = builder.ins().insertlane(mem_ref, base, 1);
+                        // let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
+                        // let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
+                        // mem_ref
                     } else { val }
                 }
                 GlobalVariable::Custom => environ.translate_custom_global_get(
@@ -2539,6 +2539,7 @@ fn prepare_ms_addr<FE>(
     if !builder.func.dfg.value_type(mem_ref).is_vector() {
         return Ok(None);
     }
+    let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
     // memref: addr-0, base-1, size-2, attr-3
     let base = builder.ins().extractlane(mem_ref, 1);
     let size = builder.ins().extractlane(mem_ref, 2);
@@ -2550,7 +2551,7 @@ fn prepare_ms_addr<FE>(
     let addr_base = if memarg.offset != 0 {
         builder.ins().iadd_imm(addr, memarg.offset as i64)
     }else { addr };
-    let addr_upper = builder.ins().iadd_imm(addr_base, access_size as i64);
+    let addr_upper = builder.ins().iadd_imm(addr_base, i64::from(access_size as i32));
     let upper = builder.ins().iadd(base, size);
     let cmp1 = builder.ins().icmp(IntCC::UnsignedGreaterThan, addr_upper, upper);
     let cmp2 = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
@@ -2686,7 +2687,7 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
             }
         };
         memArg.memory = 1;
-        let base = match translate_msload_helper(mem_ref, memArg.borrow(), ir::Opcode::Load, I32, builder, state, environ)? {
+        let base = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
             Some(v) => v,
             None => {
                 state.reachable = false;
@@ -2694,7 +2695,7 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
             }
         };
         memArg.memory = 2;
-        let size = match translate_msload_helper(mem_ref, memArg.borrow(), ir::Opcode::Load, I32, builder, state, environ)? {
+        let size = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
             Some(v) => v,
             None => {
                 state.reachable = false;
@@ -2702,7 +2703,7 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
             }
         };
         memArg.memory = 3;
-        let attr = match translate_msload_helper(mem_ref, memArg.borrow(), ir::Opcode::Load, I32, builder, state, environ)? {
+        let attr = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
             Some(v) => v,
             None => {
                 state.reachable = false;
@@ -2712,10 +2713,10 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
         if !state.reachable {
             return Ok(());
         }
-        let mem_ref = builder.ins().splat(I32X4, addr);
+        let mem_ref = builder.ins().splat(I32X4, attr);
         let mem_ref = builder.ins().insertlane(mem_ref, base, 1);
         let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
-        let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
+        let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
 
         state.push1(mem_ref);
     }
@@ -2780,8 +2781,7 @@ fn translate_msstore<FE: FuncEnvironment + ?Sized>(
     let val_ty = builder.func.dfg.value_type(val);
     let (flags, base) = unwrap_or_return_unreachable_state!(
         state,
-        prepare_ms_addr(mem_ref, memarg, mem_op_size(opcode, val_ty), builder, state, environ,
-        )?
+        prepare_ms_addr(mem_ref, memarg, mem_op_size(opcode, val_ty), builder, state, environ)?
     );
     builder.ins()
         .Store(opcode, val_ty, flags, Offset32::new(0), val, base);
@@ -3289,19 +3289,6 @@ fn optionally_bitcast_vector(
         value
     }
 }
-
-// fn mem_ref_binary(
-//     mem_ref: Value,
-//     val: Value,
-//     binary_op: F,
-//     builder: &mut FunctionBuilder,
-// ) ->Value
-// where F: Fn(Value, Value)->Value{
-//     let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
-//     let addr = builder.ins().extractlane(mem_ref, 3);
-//     let res = binary_op(addr, val);
-//     builder.ins().insertlane(mem_ref, res, 3)
-// }
 
 #[inline(always)]
 fn is_non_canonical_v128(ty: ir::Type) -> bool {
