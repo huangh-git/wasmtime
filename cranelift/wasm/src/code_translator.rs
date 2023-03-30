@@ -145,16 +145,29 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
          ***********************************************************************************/
         Operator::MemrefConst {addr, size, attr} => {
             let addr = builder.ins().iconst(I32,i64::from(*addr));
+            let size = builder.ins().iconst(I32, i64::from(*size));
             // bounds check
+            let index = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::HeapOutOfBounds);
             let heap = state.get_heap(builder.func, 0, environ)?; // index 0
             let heap = environ.heaps()[heap].clone();
-            bounds_checks::bounds_check_only(builder, environ, &heap, addr)?;
-            let size = builder.ins().iconst(I32, i64::from(*size));
+            bounds_checks::bounds_check_only(builder, environ, &heap, index)?;
             let attr = builder.ins().iconst(I32, i64::from(*attr));
-            let mem_ref = builder.ins().splat(I32X4, attr);
-            let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
-            let mem_ref = builder.ins().insertlane(mem_ref, addr, 1);
+            let mem_ref = builder.ins().splat(I32X4, addr);
+            // let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
+            let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
             let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
+            state.push1(mem_ref);
+        }
+        Operator::MemrefAlloc => {
+            let (addr, size, attr) = state.pop3();
+            let upper = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::HeapOutOfBounds);
+            let heap = state.get_heap(builder.func, 0, environ)?; // index 0
+            let heap = environ.heaps()[heap].clone();
+            // check
+            bounds_checks::bounds_check_only(builder, environ, &heap, upper)?;
+            let mem_ref = builder.ins().splat(I32X4, addr);
+            let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
+            let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
             state.push1(mem_ref);
         }
         Operator::MemrefAdd => {

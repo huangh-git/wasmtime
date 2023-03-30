@@ -361,7 +361,9 @@ impl<'a, 'data> ModuleEnvironment<'a, 'data> {
                         }
                         // no check, compiler does it
                         Operator::MemrefConst {addr, size, attr} => {
-                            // mem_ref.0 is the highest, is addr
+                            // according to https://github.com/WebAssembly/spec/blob/f5a260a2025ba4d7d398654581c7c532e3a2c319/proposals/simd/SIMD.md
+                            // Lane n corresponds to bits 32n – 32n+31, addr is lane 0.
+                            // 128bits is little end, so 0-31 in u128 is smallest one
                             let base = u128::from(addr);
                             let size = u128::from(size) << 32;
                             let attr = u128::from(attr) << 64;
