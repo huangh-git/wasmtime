@@ -143,6 +143,45 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
          *  I32x4.0 = addr, I32x4.1 = base, I32x4.2 = size, I32x4.3 = attr
          *  be careful for load/store and call instructions
          ***********************************************************************************/
+        Operator::MemrefSelect {} => {
+            let (mut arg1, mut arg2, cond) = state.pop3();
+            arg1 = optionally_bitcast_vector(arg1, I8X16, builder);
+            arg2 = optionally_bitcast_vector(arg2, I8X16, builder);
+            state.push1(builder.ins().select(cond, arg1, arg2));
+        }
+        Operator::MemrefNull {} => {
+            let zero_value :Vec<u8> = vec![0;16];
+            let data = ConstantData::from(zero_value);
+            // let data :ConstantData = value.bytes().to_vec().into();
+            let handle = builder.func.dfg.constants.insert(data);
+            let value = builder.ins().vconst(I8X16, handle);
+            // the v128.const is typed in CLIF as a I8x16 but bitcast to a different type
+            // before use
+            state.push1(value);
+            // state.push1(builder.ins().iconst(I8X16, 0));
+        }
+        Operator::MemrefNe {} => {
+            let (mem0  , mem1) = state.pop2();
+            let mem0 = optionally_bitcast_vector(mem0, I32X4, builder);
+            let mem1 = optionally_bitcast_vector(mem1, I32X4, builder);
+            // let attr0 = builder.ins().extractlane(mem0, 3);
+            // let attr1 = builder.ins().extractlane(mem1, 3);
+            let addr0 = builder.ins().extractlane(mem0, 0);
+            let addr1 = builder.ins().extractlane(mem1, 0);
+            let val = builder.ins().icmp(IntCC::NotEqual, addr0, addr1);
+            state.push1(builder.ins().uextend(I32, val));
+        }
+        Operator::MemrefEq {} => {
+            let (mem0  , mem1) = state.pop2();
+            let mem0 = optionally_bitcast_vector(mem0, I32X4, builder);
+            let mem1 = optionally_bitcast_vector(mem1, I32X4, builder);
+            // let attr0 = builder.ins().extractlane(mem0, 3);
+            // let attr1 = builder.ins().extractlane(mem1, 3);
+            let addr0 = builder.ins().extractlane(mem0, 0);
+            let addr1 = builder.ins().extractlane(mem1, 0);
+            let val = builder.ins().icmp(IntCC::Equal, addr0, addr1);
+            state.push1(builder.ins().uextend(I32, val));
+        }
         Operator::MemrefConst {addr, size, attr} => {
             let addr = builder.ins().iconst(I32,i64::from(*addr));
             let size = builder.ins().iconst(I32, i64::from(*size));
@@ -351,7 +390,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                     let val = builder.ins().load(ty, flags, addr, offset);
                     // memref from high bit to low bit :base, size,attr, addr
                     // memref: addr-0, base-1, size-2, attr-3
-                    if ty == ir::types::I32X4 {
+                    if ty.is_vector() {
                         optionally_bitcast_vector(val, I32X4, builder)
                         // let (hi, lo) = builder.ins().vsplit(val);
                         // let (base, size) = builder.ins().isplit(hi);
