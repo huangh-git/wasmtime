@@ -362,18 +362,18 @@ impl<'a, 'data> ModuleEnvironment<'a, 'data> {
                         // no check, compiler does it
                         Operator::MemrefConst {addr, size, attr} => {
                             // according to https://github.com/WebAssembly/spec/blob/f5a260a2025ba4d7d398654581c7c532e3a2c319/proposals/simd/SIMD.md
-                            // Lane n corresponds to bits 32n – 32n+31, addr is lane 0.
-                            // 128bits is little end, so 0-31 in u128 is smallest one
-                            let base = u128::from(addr);
-                            let size = u128::from(size) << 32;
-                            let attr = u128::from(attr) << 64;
-                            let addr = u128::from(addr) << 96;
+                            // Lane n corresponds to bits 32n – 32n+31.
+                            // I32x4.0 = addr, I32x4.1 = base, I32x4.2 = size, I32x4.3 = attr
+                            let addr_ = u128::from(addr);
+                            let base_ = u128::from(size) << 32;
+                            let size_ = u128::from(attr) << 64;
+                            let attr_ = u128::from(addr) << 96;
                             // let base_bytes :[u8;4] = addr.to_le_bytes();
                             // let size_bytes :[u8;4] = size.to_le_bytes();
                             // let attr_bytes :[u8;4] = attr.to_le_bytes();
                             // let addr_bytes :[u8;4] = addr.to_le_bytes();
 
-                            GlobalInit::MemRefConst(base | size | attr | addr)
+                            GlobalInit::MemRefConst(addr_ | base_ | size_ | attr_)
                         }
                         s => {
                             return Err(WasmError::Unsupported(format!(

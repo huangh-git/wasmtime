@@ -1500,7 +1500,6 @@ impl<'module_environment> cranelift_wasm::FuncEnvironment for FuncEnvironment<'m
 
         let (gv, offset) = self.get_global_location(func, index);
         let ty = match self.module.globals[index].wasm_ty {
-            MemRef => ir::types::I8X16,
             _ => super::value_type(self.isa, self.module.globals[index].wasm_ty)
         };
         Ok(GlobalVariable::Memory {
