@@ -183,23 +183,25 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             state.push1(builder.ins().uextend(I32, val));
         }
         Operator::MemrefConst {addr, size, attr} => {
-            let addr = builder.ins().iconst(I32,i64::from(*addr));
-            let size = builder.ins().iconst(I32, i64::from(*size));
-            // bounds check
-            let index = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::HeapOutOfBounds);
-            let heap = state.get_heap(builder.func, 0, environ)?; // index 0
-            let heap = environ.heaps()[heap].clone();
-            bounds_checks::bounds_check_only(builder, environ, &heap, index)?;
-            let attr = builder.ins().iconst(I32, i64::from(*attr));
-            let mem_ref = builder.ins().splat(I32X4, addr);
-            // let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
-            let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
-            let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
-            state.push1(mem_ref);
+            // memref const can not in code section
+            builder.ins().trap(ir::TrapCode::UnreachableCodeReached);
+            // let addr = builder.ins().iconst(I32,i64::from(*addr));
+            // let size = builder.ins().iconst(I32, i64::from(*size));
+            // // bounds check
+            // let index = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::HeapOutOfBounds);
+            // let heap = state.get_heap(builder.func, 0, environ)?; // index 0
+            // let heap = environ.heaps()[heap].clone();
+            // bounds_checks::bounds_check_only(builder, environ, &heap, index)?;
+            // let attr = builder.ins().iconst(I32, i64::from(*attr));
+            // let mem_ref = builder.ins().splat(I32X4, addr);
+            // // let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
+            // let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
+            // let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
+            // state.push1(mem_ref);
         }
         Operator::MemrefAlloc => {
             let (addr, size, attr) = state.pop3();
-            let upper = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::HeapOutOfBounds);
+            let upper = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::IntegerOverflow);
             let heap = state.get_heap(builder.func, 0, environ)?; // index 0
             let heap = environ.heaps()[heap].clone();
             // check
@@ -231,25 +233,24 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             state.push1(val);
         }
         Operator::MemrefNarrow {} => {
-            let narrow_size = state.pop1();
-            let narrow_base = state.pop1();
+            let (mem_ref, narrow_base, narrow_size) = state.pop3();
             let narrow_upper = builder.ins().uadd_overflow_trap(narrow_base, narrow_size, ir::TrapCode::IntegerOverflow);
-            let mem_ref = optionally_bitcast_vector(state.pop1(), I32X4, builder);
+            let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
 
             // check
             let base = builder.ins().extractlane(mem_ref, 1);
             let size = builder.ins().extractlane(mem_ref, 2);
             let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
             // has_metadata && (cmp_base || cmp_base) => trap
-            let has_metadata = builder.ins().bor(base, size);
+            // let has_metadata = builder.ins().bor(base, size);
             // if base > narrow_base, trap
             let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, narrow_base);
             // if narrow_upper > upper, trap
             let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, upper);
             let may_trap = builder.ins().bor(cmp_base_trap, cmp_upper_trap);
-            let is_trap = builder.ins().band(has_metadata, may_trap);
+            // let is_trap = builder.ins().band(has_metadata, may_trap);
             // TODO:need a new TrapCode here
-            builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
+            builder.ins().trapnz(may_trap, ir::TrapCode::HeapOutOfBounds);
 
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_size, 2);
@@ -296,7 +297,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         }
         Operator::MemrefMSLoad { memarg } => {
             // opcode is not used
-            translate_msload(memarg, ir::Opcode::Uload8, I32X4, builder, state, environ)?;
+            translate_msload(memarg, ir::Opcode::Load, I32X4, builder, state, environ)?;
         }
         Operator::I32MSLoad8U { memarg } => {
             translate_msload(memarg, ir::Opcode::Uload8, I32, builder, state, environ)?;
@@ -2607,6 +2608,7 @@ where
     Ok(Some((flags, addr)))
 }
 
+// check and prepare
 fn prepare_ms_addr<FE>(
     mem_ref: Value,
     memarg: &MemArg,
@@ -2623,21 +2625,25 @@ fn prepare_ms_addr<FE>(
     }
     let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
     // memref: addr-0, base-1, size-2, attr-3
+    let addr = builder.ins().extractlane(mem_ref, 0);
     let base = builder.ins().extractlane(mem_ref, 1);
     let size = builder.ins().extractlane(mem_ref, 2);
     let attr = builder.ins().extractlane(mem_ref, 3);
-    let addr = builder.ins().extractlane(mem_ref, 0);
 
     // check
     let has_metadata = builder.ins().bor(size, base); // true if has_metadata
+    let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
     let addr_base = if memarg.offset != 0 {
         builder.ins().iadd_imm(addr, memarg.offset as i64)
     }else { addr };
+    // try to touch memory [addr_base...addr_upper]
     let addr_upper = builder.ins().iadd_imm(addr_base, i64::from(access_size as i32));
+    // can touch memory [base...upper]
     let upper = builder.ins().iadd(base, size);
     let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, addr_upper, upper);
     let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
     let may_trap = builder.ins().bor(cmp_upper_trap, cmp_base_trap);
+
     let is_trap = builder.ins().band(has_metadata, may_trap);
     builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
 
@@ -2796,9 +2802,9 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
             return Ok(());
         }
         let mem_ref = builder.ins().splat(I32X4, attr);
+        let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
         let mem_ref = builder.ins().insertlane(mem_ref, base, 1);
         let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
-        let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
 
         state.push1(mem_ref);
     }
