@@ -2631,7 +2631,7 @@ fn prepare_ms_addr<FE>(
     let attr = builder.ins().extractlane(mem_ref, 3);
 
     // check
-    let has_metadata = builder.ins().bor(size, base); // true if has_metadata
+    let has_metadata = builder.ins().bor(size, attr); // true if has_metadata
     let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
     let addr_base = if memarg.offset != 0 {
         builder.ins().iadd_imm(addr, memarg.offset as i64)
