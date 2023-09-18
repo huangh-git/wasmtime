@@ -240,17 +240,18 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             // check
             let base = builder.ins().extractlane(mem_ref, 1);
             let size = builder.ins().extractlane(mem_ref, 2);
+            let attr = builder.ins().extractlane(mem_ref, 3);
             let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
             // has_metadata && (cmp_base || cmp_base) => trap
-            // let has_metadata = builder.ins().bor(base, size);
+            let has_metadata = builder.ins().bor(size, attr);
             // if base > narrow_base, trap
             let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, narrow_base);
             // if narrow_upper > upper, trap
             let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, upper);
             let may_trap = builder.ins().bor(cmp_base_trap, cmp_upper_trap);
-            // let is_trap = builder.ins().band(has_metadata, may_trap);
+            let is_trap = builder.ins().band(has_metadata, may_trap);
             // TODO:need a new TrapCode here
-            builder.ins().trapnz(may_trap, ir::TrapCode::HeapOutOfBounds);
+            builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
 
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_size, 2);
