@@ -96,6 +96,7 @@ use smallvec::SmallVec;
 use std::convert::TryFrom;
 use std::vec::Vec;
 use wasmparser::{FuncValidator, MemArg, Operator, WasmModuleResources};
+use crate::code_translator::bounds_checks::bounds_check_only;
 
 /// Given an `Option<T>`, unwrap the inner `T` or, if the option is `None`, set
 /// the state to unreachable and return.
@@ -206,6 +207,11 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let heap = environ.heaps()[heap].clone();
             // check
             bounds_checks::bounds_check_only(builder, environ, &heap, upper)?;
+            // TODO:if size == 0
+            // let bound_size = builder.ins().isub(bound, addr);
+            // // not support smin for scalar now
+            // let cmp = builder.ins().icmp_imm(IntCC::NotEqual, size, 0);
+            // let size = builder.ins().select(cmp, size, bound_size);//size?size:bound_size
             let mem_ref = builder.ins().splat(I32X4, addr);
             let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
             let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
@@ -244,6 +250,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
             // has_metadata && (cmp_base || cmp_base) => trap
             let has_metadata = builder.ins().bor(size, attr);
+            let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
             // if base > narrow_base, trap
             let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, narrow_base);
             // if narrow_upper > upper, trap
@@ -252,6 +259,10 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let is_trap = builder.ins().band(has_metadata, may_trap);
             // TODO:need a new TrapCode here
             builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
+
+            // if size is zero
+            let zero_size = builder.ins().iconst(I32, 0);
+            let narrow_size = builder.ins().select(has_metadata, narrow_size, zero_size);
 
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_size, 2);
@@ -2650,6 +2661,10 @@ fn prepare_ms_addr<FE>(
 
     let heap = state.get_heap(builder.func, memarg.memory, environ)?;
     let heap = environ.heaps()[heap].clone();
+
+    if memarg.memory == 0 {
+        bounds_checks::bounds_check_only(builder, environ, &heap, upper)?;
+    }
 
     let addr = bounds_checks::compute_addr_with_no_bounds_check(
         builder,

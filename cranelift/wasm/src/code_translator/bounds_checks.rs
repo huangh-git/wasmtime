@@ -13,6 +13,7 @@ use cranelift_codegen::{
     cursor::{Cursor, FuncCursor},
     ir::{self, condcodes::IntCC, InstBuilder, RelSourceLoc},
 };
+use cranelift_codegen::ir::types::I32;
 use cranelift_frontend::FunctionBuilder;
 use wasmtime_types::WasmResult;
 
