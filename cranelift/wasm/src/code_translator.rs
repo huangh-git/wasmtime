@@ -96,7 +96,6 @@ use smallvec::SmallVec;
 use std::convert::TryFrom;
 use std::vec::Vec;
 use wasmparser::{FuncValidator, MemArg, Operator, WasmModuleResources};
-use crate::code_translator::bounds_checks::bounds_check_only;
 
 /// Given an `Option<T>`, unwrap the inner `T` or, if the option is `None`, set
 /// the state to unreachable and return.
@@ -206,7 +205,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let heap = state.get_heap(builder.func, 0, environ)?; // index 0
             let heap = environ.heaps()[heap].clone();
             // check
-            bounds_checks::bounds_check_only(builder, environ, &heap, upper)?;
+            bounds_check_only(builder, environ, &heap, upper)?;
             // TODO:if size == 0
             // let bound_size = builder.ins().isub(bound, addr);
             // // not support smin for scalar now
@@ -2663,7 +2662,7 @@ fn prepare_ms_addr<FE>(
     let heap = environ.heaps()[heap].clone();
 
     if memarg.memory == 0 {
-        bounds_checks::bounds_check_only(builder, environ, &heap, upper)?;
+        bounds_check_only(builder, environ, &heap, upper)?;
     }
 
     let addr = bounds_checks::compute_addr_with_no_bounds_check(
