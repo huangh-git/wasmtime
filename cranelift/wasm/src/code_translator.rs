@@ -96,6 +96,7 @@ use smallvec::SmallVec;
 use std::convert::TryFrom;
 use std::vec::Vec;
 use wasmparser::{FuncValidator, MemArg, Operator, WasmModuleResources};
+use bounds_checks::bounds_check_only;
 
 /// Given an `Option<T>`, unwrap the inner `T` or, if the option is `None`, set
 /// the state to unreachable and return.
