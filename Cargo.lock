@@ -612,7 +612,7 @@ dependencies = [
  "target-lexicon",
  "thiserror",
  "toml",
- "wasmparser 0.96.0",
+ "wasmparser 0.96.0 (git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser)",
  "wat",
 ]
 
@@ -785,7 +785,7 @@ dependencies = [
  "serde",
  "smallvec",
  "target-lexicon",
- "wasmparser 0.96.0",
+ "wasmparser 0.96.0 (git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser)",
  "wasmtime-types",
  "wat",
 ]
@@ -3330,6 +3330,8 @@ dependencies = [
 [[package]]
 name = "wasmparser"
 version = "0.96.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adde01ade41ab9a5d10ec8ed0bb954238cf8625b5cd5a13093d6de2ad9c2be1a"
 dependencies = [
  "indexmap",
  "url",
@@ -3338,8 +3340,7 @@ dependencies = [
 [[package]]
 name = "wasmparser"
 version = "0.96.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adde01ade41ab9a5d10ec8ed0bb954238cf8625b5cd5a13093d6de2ad9c2be1a"
+source = "git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser#e3aec63577bab5c4e9078049341b1d26ac43b231"
 dependencies = [
  "indexmap",
  "url",
@@ -3385,7 +3386,7 @@ dependencies = [
  "target-lexicon",
  "tempfile",
  "wasi-cap-std-sync",
- "wasmparser 0.96.0",
+ "wasmparser 0.96.0 (git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser)",
  "wasmtime-cache",
  "wasmtime-component-macro",
  "wasmtime-component-util",
@@ -3559,7 +3560,7 @@ dependencies = [
  "object",
  "target-lexicon",
  "thiserror",
- "wasmparser 0.96.0",
+ "wasmparser 0.96.0 (git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser)",
  "wasmtime-environ",
 ]
 
@@ -3580,7 +3581,7 @@ dependencies = [
  "target-lexicon",
  "thiserror",
  "wasm-encoder",
- "wasmparser 0.96.0",
+ "wasmparser 0.96.0 (git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser)",
  "wasmprinter",
  "wasmtime-component-util",
  "wasmtime-types",
@@ -3595,7 +3596,7 @@ dependencies = [
  "component-fuzz-util",
  "env_logger 0.9.0",
  "libfuzzer-sys",
- "wasmparser 0.96.0",
+ "wasmparser 0.96.0 (git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser)",
  "wasmprinter",
  "wasmtime-environ",
  "wat",
@@ -3658,7 +3659,7 @@ dependencies = [
  "wasm-smith",
  "wasm-spec-interpreter",
  "wasmi",
- "wasmparser 0.96.0",
+ "wasmparser 0.96.0 (git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser)",
  "wasmprinter",
  "wasmtime",
  "wasmtime-wast",
@@ -3738,7 +3739,7 @@ dependencies = [
  "cranelift-entity",
  "serde",
  "thiserror",
- "wasmparser 0.96.0",
+ "wasmparser 0.96.0 (git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser)",
 ]
 
 [[package]]
@@ -3949,7 +3950,7 @@ dependencies = [
  "regalloc2",
  "smallvec",
  "target-lexicon",
- "wasmparser 0.96.0",
+ "wasmparser 0.96.0 (git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser)",
 ]
 
 [[package]]
@@ -3959,7 +3960,7 @@ dependencies = [
  "anyhow",
  "clap 3.2.8",
  "target-lexicon",
- "wasmparser 0.96.0",
+ "wasmparser 0.96.0 (git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser)",
  "wasmtime-environ",
  "wat",
  "winch-codegen",
