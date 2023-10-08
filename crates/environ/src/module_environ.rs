@@ -94,6 +94,12 @@ pub struct ModuleTranslation<'data> {
     /// The type information of the current module made available at the end of the
     /// validation process.
     types: Option<Types>,
+
+    /// function index in wasm module for function (import "__host" "__set_value")
+    pub metadata_set_value_func: Option<u32>,
+
+    /// function index in wasm module for function (import "__host" "__get_value")
+    pub metadata_get_value_func: Option<u32>,
 }
 
 impl<'data> ModuleTranslation<'data> {
@@ -255,6 +261,15 @@ impl<'a, 'data> ModuleEnvironment<'a, 'data> {
                     let import = entry?;
                     let ty = match import.ty {
                         TypeRef::Func(index) => {
+                            if import.module == "__host" {
+                                if import.name == "__set_value" {
+                                    self.result.metadata_set_value_func = Some(index);
+                                } else if import.name == "__get_value" {
+                                    self.result.metadata_get_value_func = Some(index);
+                                } else {
+                                    unreachable!();
+                                }
+                            }
                             let index = TypeIndex::from_u32(index);
                             let sig_index = self.result.module.types[index].unwrap_function();
                             self.result.module.num_imported_funcs += 1;

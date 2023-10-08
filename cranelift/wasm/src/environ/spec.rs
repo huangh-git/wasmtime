@@ -86,6 +86,16 @@ pub trait TargetEnvironment {
 /// IR. The function environment provides information about the WebAssembly module as well as the
 /// runtime environment.
 pub trait FuncEnvironment: TargetEnvironment {
+    /// we should know the __hos::__set_value function index when we translate some operation
+    fn host_set_value_func_index(&self) -> Option<u32> {
+        None
+    }
+
+    /// we should know the __host::__get_value function index when we translate some operation
+    fn host_get_value_func_index(&self) -> Option<u32> {
+        None
+    }
+
     /// Is the given parameter of the given function a wasm-level parameter, as opposed to a hidden
     /// parameter added for use by the implementation?
     fn is_wasm_parameter(&self, signature: &ir::Signature, index: usize) -> bool {

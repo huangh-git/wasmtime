@@ -190,6 +190,14 @@ impl<'module_environment> FuncEnvironment<'module_environment> {
         }
     }
 
+    fn host_set_value_func_index(&self) -> Option<u32> {
+        self.translation.metadata_set_value_func
+    }
+
+    fn host_get_value_func_index(&self) -> Option<u32> {
+        self.translation.metadata_get_value_func
+    }
+
     fn mem_ref(&self) -> bool {
         self.tunables.mem_ref
     }

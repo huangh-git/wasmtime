@@ -10,6 +10,9 @@ use std::{
     path::{Component, Path, PathBuf},
     process,
 };
+use lazy_static::lazy_static;
+use std::collections::HashMap;
+use std::sync::Mutex;
 use wasmtime::{Engine, Func, Linker, Module, Store, Trap, Val, ValType};
 use wasmtime_cli_flags::{CommonOptions, WasiModules};
 use wasmtime_wasi::sync::{ambient_authority, Dir, TcpListener, WasiCtxBuilder};
@@ -154,6 +157,10 @@ pub struct RunCommand {
     module_args: Vec<String>,
 }
 
+lazy_static! {
+    static ref METADATA_MAP: Mutex<HashMap<i32, i64>> = Mutex::new(HashMap::new());
+}
+
 impl RunCommand {
     /// Executes the command.
     pub fn execute(&self) -> Result<()> {
@@ -205,6 +212,16 @@ impl RunCommand {
             ))?;
         }
 
+        // test: add my host function
+        METADATA_MAP.lock().unwrap().clear();
+        linker.func_wrap("__host", "__set_value", move |key: i32, value: i64| {
+            let mut map = METADATA_MAP.lock().unwrap();
+            map.insert(key, value);
+        })?;
+        linker.func_wrap("__host", "__get_value",   move |key: i32| -> i64 {
+            let map = METADATA_MAP.lock().unwrap();
+            *map.get(&key).unwrap_or(&0i64) // 返回0如果key不存在
+        })?;
         // Load the main wasm module.
         match self
             .load_main_module(&mut store, &mut linker)
