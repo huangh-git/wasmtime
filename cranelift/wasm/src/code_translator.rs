@@ -153,20 +153,16 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         Operator::MemrefNull {} => {
             let zero_value :Vec<u8> = vec![0;16];
             let data = ConstantData::from(zero_value);
-            // let data :ConstantData = value.bytes().to_vec().into();
             let handle = builder.func.dfg.constants.insert(data);
             let value = builder.ins().vconst(I8X16, handle);
             // the v128.const is typed in CLIF as a I8x16 but bitcast to a different type
             // before use
             state.push1(value);
-            // state.push1(builder.ins().iconst(I8X16, 0));
         }
         Operator::MemrefNe {} => {
             let (mem0  , mem1) = state.pop2();
             let mem0 = optionally_bitcast_vector(mem0, I32X4, builder);
             let mem1 = optionally_bitcast_vector(mem1, I32X4, builder);
-            // let attr0 = builder.ins().extractlane(mem0, 3);
-            // let attr1 = builder.ins().extractlane(mem1, 3);
             let addr0 = builder.ins().extractlane(mem0, 0);
             let addr1 = builder.ins().extractlane(mem1, 0);
             let val = builder.ins().icmp(IntCC::NotEqual, addr0, addr1);
@@ -176,8 +172,6 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let (mem0  , mem1) = state.pop2();
             let mem0 = optionally_bitcast_vector(mem0, I32X4, builder);
             let mem1 = optionally_bitcast_vector(mem1, I32X4, builder);
-            // let attr0 = builder.ins().extractlane(mem0, 3);
-            // let attr1 = builder.ins().extractlane(mem1, 3);
             let addr0 = builder.ins().extractlane(mem0, 0);
             let addr1 = builder.ins().extractlane(mem1, 0);
             let val = builder.ins().icmp(IntCC::Equal, addr0, addr1);
@@ -186,19 +180,6 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         Operator::MemrefConst {addr, size, attr} => {
             // memref const can not in code section
             builder.ins().trap(ir::TrapCode::UnreachableCodeReached);
-            // let addr = builder.ins().iconst(I32,i64::from(*addr));
-            // let size = builder.ins().iconst(I32, i64::from(*size));
-            // // bounds check
-            // let index = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::HeapOutOfBounds);
-            // let heap = state.get_heap(builder.func, 0, environ)?; // index 0
-            // let heap = environ.heaps()[heap].clone();
-            // bounds_checks::bounds_check_only(builder, environ, &heap, index)?;
-            // let attr = builder.ins().iconst(I32, i64::from(*attr));
-            // let mem_ref = builder.ins().splat(I32X4, addr);
-            // // let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
-            // let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
-            // let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
-            // state.push1(mem_ref);
         }
         Operator::MemrefAlloc => {
             let (addr, size, attr) = state.pop3();
@@ -207,11 +188,6 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let heap = environ.heaps()[heap].clone();
             // check
             bounds_check_only(builder, environ, &heap, upper)?;
-            // TODO:if size == 0
-            // let bound_size = builder.ins().isub(bound, addr);
-            // // not support smin for scalar now
-            // let cmp = builder.ins().icmp_imm(IntCC::NotEqual, size, 0);
-            // let size = builder.ins().select(cmp, size, bound_size);//size?size:bound_size
             let mem_ref = builder.ins().splat(I32X4, addr);
             let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
             let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
@@ -269,20 +245,43 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             state.push1(mem_ref);
         }
         Operator::MemrefMSStore { memarg } => {
-            let mut mem_arg = memarg.clone();
+            // let mut mem_arg = memarg.clone();
             let val = optionally_bitcast_vector(state.pop1(), I32X4, builder);
             let mem_ref = state.pop1();
             let addr = builder.ins().extractlane(val, 0);
+            translate_msstore(mem_ref, memarg, ir::Opcode::Store, addr, builder, state, environ)?;
             let base = builder.ins().extractlane(val, 1);
             let size = builder.ins().extractlane(val, 2);
             let attr = builder.ins().extractlane(val, 3);
-            translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, addr, builder, state, environ)?;
-            mem_arg.memory = 1;
-            translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, base, builder, state, environ)?;
-            mem_arg.memory = 2;
-            translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, size, builder, state, environ)?;
-            mem_arg.memory = 3;
-            translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, attr, builder, state, environ)?;
+
+            // store metadata
+            if let Some(funcIdx) = environ.host_set_value_func_index() {
+                let metadata = builder.ins().iconcat(base, size);
+                let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
+                let args :&mut[Value] = &mut[addr, metadata];
+                let call = environ.translate_call(
+                    builder.cursor(),
+                    FuncIndex::from_u32(funcIdx),
+                    fref,
+                    args,
+                )?;
+                let inst_results = builder.inst_results(call);
+                debug_assert_eq!(
+                    inst_results.len(),
+                    builder.func.dfg.signatures[builder.func.dfg.ext_funcs[fref].signature]
+                        .returns
+                        .len(),
+                    "translate_call results should match the call signature"
+                );
+            }
+
+            // translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, addr, builder, state, environ)?;
+            // mem_arg.memory = 1;
+            // translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, base, builder, state, environ)?;
+            // mem_arg.memory = 2;
+            // translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, size, builder, state, environ)?;
+            // mem_arg.memory = 3;
+            // translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, attr, builder, state, environ)?;
         }
         Operator::I32MSStore { memarg }
         | Operator::I64MSStore { memarg }
@@ -2782,7 +2781,7 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
             return Ok(());
         }
     } else {
-        let mut memArg = memarg.clone();
+        // let mut memArg = memarg.clone();
         let addr = match translate_msload_helper(mem_ref, memarg, ir::Opcode::Load, I32, builder, state, environ)? {
             Some(v) => v,
             None => {
@@ -2790,39 +2789,83 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
                 return Ok(());
             }
         };
-        memArg.memory = 1;
-        let base = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
-            Some(v) => v,
+        // load metadata
+        match environ.host_get_value_func_index() {
+            // has metadata
+            Some(funcIdx) => {
+                // let metadata = builder.ins().iconcat(base, size);
+                let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
+                let args: &mut [Value] = &mut [addr];
+                let call = environ.translate_call(
+                    builder.cursor(),
+                    FuncIndex::from_u32(funcIdx),
+                    fref,
+                    args,
+                )?;
+                let inst_results = builder.inst_results(call);
+                debug_assert_eq!(
+                    inst_results.len(),
+                    builder.func.dfg.signatures[builder.func.dfg.ext_funcs[fref].signature]
+                        .returns
+                        .len(),
+                    "translate_call results should match the call signature"
+                );
+                let metadata = if let Some(res) = inst_results.get(0) {
+                    *res
+                } else {
+                    state.reachable = false;
+                    return Ok(());
+                };
+                let (base, size) = builder.ins().isplit(metadata);
+                let mem_ref = builder.ins().splat(I32X4, addr);
+                let mem_ref = builder.ins().insertlane(mem_ref, base, 1);
+                let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
+                let attr = builder.ins().iconst(I32, 0i64);
+                let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
+                state.push1(mem_ref);
+            }
             None => {
-                state.reachable = false;
-                return Ok(());
+                // no metadata
+                let attr = builder.ins().iconst(I32, 0i64);
+                let mem_ref = builder.ins().splat(I32X4, attr);
+                let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
+                state.push1(mem_ref);
             }
         };
-        memArg.memory = 2;
-        let size = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
-            Some(v) => v,
-            None => {
-                state.reachable = false;
-                return Ok(());
-            }
-        };
-        memArg.memory = 3;
-        let attr = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
-            Some(v) => v,
-            None => {
-                state.reachable = false;
-                return Ok(());
-            }
-        };
-        if !state.reachable {
-            return Ok(());
-        }
-        let mem_ref = builder.ins().splat(I32X4, attr);
-        let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
-        let mem_ref = builder.ins().insertlane(mem_ref, base, 1);
-        let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
-
-        state.push1(mem_ref);
+        // memArg.memory = 1;
+        // let base = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
+        //     Some(v) => v,
+        //     None => {
+        //         state.reachable = false;
+        //         return Ok(());
+        //     }
+        // };
+        // memArg.memory = 2;
+        // let size = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
+        //     Some(v) => v,
+        //     None => {
+        //         state.reachable = false;
+        //         return Ok(());
+        //     }
+        // };
+        // memArg.memory = 3;
+        // let attr = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
+        //     Some(v) => v,
+        //     None => {
+        //         state.reachable = false;
+        //         return Ok(());
+        //     }
+        // };
+        // if !state.reachable {
+        //     return Ok(());
+        // }
+        // let (base, size) = builder.ins().isplit(metadata);
+        // let mem_ref = builder.ins().splat(I32X4, attr);
+        // let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
+        // let mem_ref = builder.ins().insertlane(mem_ref, base, 1);
+        // let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
+        //
+        // state.push1(mem_ref);
     }
     return Ok(());
 }
