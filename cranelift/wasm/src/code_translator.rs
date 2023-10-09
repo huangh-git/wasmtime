@@ -214,8 +214,9 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = builder.ins().extractlane(mem_ref, *field as u8);
             state.push1(val);
         }
-        Operator::MemrefNarrow {} => {
-            let (mem_ref, narrow_base, narrow_size) = state.pop3();
+        Operator::MemrefNarrow {narrow_size} => {
+            let (narrow_base, mem_ref) = state.pop2();
+            let narrow_size = builder.ins().iconst(I32, *narrow_size as i64);
             let narrow_upper = builder.ins().uadd_overflow_trap(narrow_base, narrow_size, ir::TrapCode::IntegerOverflow);
             let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
 
@@ -227,12 +228,11 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             // has_metadata && (cmp_base || cmp_base) => trap
             let has_metadata = builder.ins().bor(size, attr);
             let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
+            // base is no need to check, it comes from mref.field 0
             // if base > narrow_base, trap
-            let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, narrow_base);
+            // let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, narrow_base);
             // if narrow_upper > upper, trap
-            let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, upper);
-            let may_trap = builder.ins().bor(cmp_base_trap, cmp_upper_trap);
-            let is_trap = builder.ins().band(has_metadata, may_trap);
+            let is_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, upper);
             // TODO:need a new TrapCode here
             builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
 

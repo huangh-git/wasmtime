@@ -331,11 +331,11 @@ impl<'a, 'data> ModuleEnvironment<'a, 'data> {
                 for entry in memories {
                     let memory = entry?;
                     let plan = MemoryPlan::for_memory(memory.into(), &self.tunables);
-                    if self.tunables.mem_ref {
-                        self.result.module.memory_plans.push(plan.clone());
-                        self.result.module.memory_plans.push(plan.clone());
-                        self.result.module.memory_plans.push(plan.clone());
-                    }
+                    // if self.tunables.mem_ref {
+                    //     self.result.module.memory_plans.push(plan.clone());
+                    //     self.result.module.memory_plans.push(plan.clone());
+                    //     self.result.module.memory_plans.push(plan.clone());
+                    // }
                     self.result.module.memory_plans.push(plan);
                 }
             }

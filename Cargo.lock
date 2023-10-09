@@ -3340,7 +3340,7 @@ dependencies = [
 [[package]]
 name = "wasmparser"
 version = "0.96.0"
-source = "git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser#e3aec63577bab5c4e9078049341b1d26ac43b231"
+source = "git+https://github.com/huangh-git/wasm-tools.git?branch=memswasm-wasmparser#ac49fdbed55e7357fbe504d76453af886757ab94"
 dependencies = [
  "indexmap",
  "url",
