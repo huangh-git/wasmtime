@@ -95,7 +95,7 @@ use itertools::Itertools;
 use smallvec::SmallVec;
 use std::convert::TryFrom;
 use std::vec::Vec;
-use wasmparser::{FuncValidator, MemArg, Operator, WasmModuleResources};
+use wasmparser::{FuncValidator, MemArg, Operator, ValType, WasmModuleResources};
 use bounds_checks::bounds_check_only;
 
 /// Given an `Option<T>`, unwrap the inner `T` or, if the option is `None`, set
@@ -181,17 +181,28 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             // memref const can not in code section
             builder.ins().trap(ir::TrapCode::UnreachableCodeReached);
         }
-        Operator::MemrefAlloc => {
-            let (addr, size, attr) = state.pop3();
-            let upper = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::IntegerOverflow);
-            let heap = state.get_heap(builder.func, 0, environ)?; // index 0
-            let heap = environ.heaps()[heap].clone();
-            // check
-            bounds_check_only(builder, environ, &heap, upper)?;
+        Operator::MemrefAlloc {attr} => {
+            let (addr, size) = state.pop2();
             let mem_ref = builder.ins().splat(I32X4, addr);
-            let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
-            let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
-            state.push1(mem_ref);
+            let attr_val = builder.ins().iconst(I32, *attr as i64);
+            let mem_ref = builder.ins().insertlane(mem_ref, attr_val, 3);
+            if (attr & 0x20) == 0x20 {
+                // metadata is valid, so check the base+size
+                let upper = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::IntegerOverflow);
+                let heap = state.get_heap(builder.func, 0, environ)?; // index 0
+                let heap = environ.heaps()[heap].clone();
+                bounds_check_only(builder, environ, &heap, upper)?;
+                // check size
+                let size_check = builder.ins().band_imm(size, 0xff000000i64);
+                builder.ins().trapnz(size_check, ir::TrapCode::HeapOutOfBounds);
+                let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
+                state.push1(mem_ref);
+            } else {
+                let mem_ref = builder.ins().insertlane(mem_ref, attr_val, 2); // it is needed, because addr may >= (1<<24), attr < (1<<24)
+                state.push1(mem_ref);
+            }
+
+            // state.push1(mem_ref);
         }
         Operator::MemrefAdd => {
             let (mem_ref, val) = state.pop2();
@@ -216,23 +227,30 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         }
         Operator::MemrefNarrow {narrow_size} => {
             let (narrow_base, mem_ref) = state.pop2();
+            // create block
+            // let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
+            // state.push_block(next, 0, 0);
+
+            let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
+            let size = builder.ins().extractlane(mem_ref, 2);
+            let attr = builder.ins().extractlane(mem_ref, 3);
+
+            let has_metadata = builder.ins().band_imm(attr, 0x20i64);
+            let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
+            // do nothing if there is no metadata
+            // translate_br_if(0, builder, state);
+
+            // else check
             let narrow_size = builder.ins().iconst(I32, *narrow_size as i64);
             let narrow_upper = builder.ins().uadd_overflow_trap(narrow_base, narrow_size, ir::TrapCode::IntegerOverflow);
-            let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
 
             // check
             let base = builder.ins().extractlane(mem_ref, 1);
-            let size = builder.ins().extractlane(mem_ref, 2);
-            let attr = builder.ins().extractlane(mem_ref, 3);
             let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
-            // has_metadata && (cmp_base || cmp_base) => trap
-            let has_metadata = builder.ins().bor(size, attr);
-            let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
             // base is no need to check, it comes from mref.field 0
-            // if base > narrow_base, trap
-            // let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, narrow_base);
             // if narrow_upper > upper, trap
             let is_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, upper);
+            let is_trap = builder.ins().band(has_metadata, is_trap);
             // TODO:need a new TrapCode here
             builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
 
@@ -242,6 +260,15 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
 
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_size, 2);
+
+
+            // end block
+            // let frame = state.control_stack.pop().unwrap();
+            // let next_block = frame.following_code();
+            // canonicalise_then_jump(builder, next_block, &[]);
+            // builder.switch_to_block(next_block);
+            // builder.seal_block(next_block);
+
             state.push1(mem_ref);
         }
         Operator::MemrefMSStore { memarg } => {
@@ -250,9 +277,13 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let mem_ref = state.pop1();
             let addr = builder.ins().extractlane(val, 0);
             translate_msstore(mem_ref, memarg, ir::Opcode::Store, addr, builder, state, environ)?;
+            // val's metadata
             let base = builder.ins().extractlane(val, 1);
             let size = builder.ins().extractlane(val, 2);
             let attr = builder.ins().extractlane(val, 3);
+            // size = size & (attr << 24)
+            let attr = builder.ins().ishl_imm(attr, 24i64);
+            let size = builder.ins().bor(size, attr);
 
             // store metadata
             if let Some(funcIdx) = environ.host_set_value_func_index() {
@@ -274,14 +305,6 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                     "translate_call results should match the call signature"
                 );
             }
-
-            // translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, addr, builder, state, environ)?;
-            // mem_arg.memory = 1;
-            // translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, base, builder, state, environ)?;
-            // mem_arg.memory = 2;
-            // translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, size, builder, state, environ)?;
-            // mem_arg.memory = 3;
-            // translate_msstore(mem_ref, &mem_arg, ir::Opcode::Store, attr, builder, state, environ)?;
         }
         Operator::I32MSStore { memarg }
         | Operator::I64MSStore { memarg }
@@ -2642,7 +2665,7 @@ fn prepare_ms_addr<FE>(
     let attr = builder.ins().extractlane(mem_ref, 3);
 
     // check
-    let has_metadata = builder.ins().bor(size, attr); // true if has_metadata
+    let has_metadata = builder.ins().band_imm(attr, 0x20i64); // true if has_metadata
     let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
     let addr_base = if memarg.offset != 0 {
         builder.ins().iadd_imm(addr, memarg.offset as i64)
@@ -2817,16 +2840,20 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
                     return Ok(());
                 };
                 let (base, size) = builder.ins().isplit(metadata);
+                // attr = (size&0xff000000) >>24, size = size & 0xffffff
+                let attr = builder.ins().band_imm(size, 0xff000000i64);//TODO:
+                let attr = builder.ins().ushr_imm(attr, 24i64);
+                let size = builder.ins().band_imm(size, 0x00ffffffi64);
+                // restore the value
                 let mem_ref = builder.ins().splat(I32X4, addr);
                 let mem_ref = builder.ins().insertlane(mem_ref, base, 1);
                 let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
-                let attr = builder.ins().iconst(I32, 0i64);
                 let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
                 state.push1(mem_ref);
             }
             None => {
                 // no metadata
-                let attr = builder.ins().iconst(I32, 0i64);
+                let attr = builder.ins().iconst(I32, 0x00i64);
                 let mem_ref = builder.ins().splat(I32X4, attr);
                 let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
                 state.push1(mem_ref);
