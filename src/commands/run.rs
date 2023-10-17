@@ -165,6 +165,17 @@ fn __host__set_value(key: i32, value:i64) {
     // println!("set k:{:X}", key);
     // println!("set v:{:X}", value);
     let mut map = METADATA_MAP.lock().unwrap();
+    // check
+    if value & 0x20000000 != 0 {
+        let base = (value as u64 >> 32) as i32;
+        let size = (value & 0x00ffffff) as i32;
+        let upper = base + size;
+        if (key < base) || (key > upper) {
+            eprintln!("Error:out of bounds when store metadata");
+            process::exit(1);
+        }
+    }
+
     match map.get(&key) {
         None => {
             map.insert(key, value);
