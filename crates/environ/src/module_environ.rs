@@ -263,9 +263,9 @@ impl<'a, 'data> ModuleEnvironment<'a, 'data> {
                         TypeRef::Func(index) => {
                             if import.module == "__host" {
                                 if import.name == "__set_value" {
-                                    self.result.metadata_set_value_func = Some(index);
+                                    self.result.metadata_set_value_func = Some(self.result.module.num_imported_funcs as u32);
                                 } else if import.name == "__get_value" {
-                                    self.result.metadata_get_value_func = Some(index);
+                                    self.result.metadata_get_value_func = Some(self.result.module.num_imported_funcs as u32);
                                 } else {
                                     unreachable!();
                                 }

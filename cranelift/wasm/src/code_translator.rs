@@ -183,20 +183,51 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         }
         Operator::MemrefAlloc {attr} => {
             let (addr, size) = state.pop2();
-            let mem_ref = builder.ins().splat(I32X4, addr);
+            let mem_ref = builder.ins().splat(I32X4, addr); // insert addr and base
             let attr_val = builder.ins().iconst(I32, *attr as i64);
-            let mem_ref = builder.ins().insertlane(mem_ref, attr_val, 3);
-            if (attr & 0x20) == 0x20 {
+            let mem_ref = builder.ins().insertlane(mem_ref, attr_val, 3);// insert attr
+            if (*attr & 0x20) == 0x20 {
                 // metadata is valid, so check the base+size
                 let upper = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::IntegerOverflow);
                 let heap = state.get_heap(builder.func, 0, environ)?; // index 0
                 let heap = environ.heaps()[heap].clone();
                 bounds_check_only(builder, environ, &heap, upper)?;
-                // check size
-                let size_check = builder.ins().band_imm(size, 0xff000000i64);
-                builder.ins().trapnz(size_check, ir::TrapCode::HeapOutOfBounds);
-                let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
+                // TODO:check size
+                // let size_check = builder.ins().band_imm(size, 0xff000000i64);
+                // builder.ins().trapnz(size_check, ir::TrapCode::HeapOutOfBounds);
+                let mem_ref = builder.ins().insertlane(mem_ref, size, 2); // insert size
                 state.push1(mem_ref);
+
+                if let Some(funcIdx) = environ.host_set_value_func_index() {
+                    // let metadata = builder.ins().iconcat(base, size); not implement iconcat
+                    let metadata = builder.ins().uextend(I64, size);
+                    let new_base = builder.ins().uextend(I64, addr);
+                    let new_base = builder.ins().ishl_imm(new_base, 32i64);
+                    let metadata = builder.ins().bor(metadata, new_base);
+                    let metadata = builder.ins().bor_imm(metadata, (*attr as i64)<<24);
+                    let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
+                    let args :&mut[Value] = &mut[addr, metadata];
+                    bitcast_wasm_params(
+                        environ,
+                        builder.func.dfg.ext_funcs[fref].signature,
+                        args,
+                        builder,
+                    );
+                    let call = environ.translate_call(
+                        builder.cursor(),
+                        FuncIndex::from_u32(funcIdx),
+                        fref,
+                        args,
+                    )?;
+                    let inst_results = builder.inst_results(call);
+                    debug_assert_eq!(
+                        inst_results.len(),
+                        builder.func.dfg.signatures[builder.func.dfg.ext_funcs[fref].signature]
+                            .returns
+                            .len(),
+                        "translate_call results should match the call signature"
+                    );
+                }
             } else {
                 let mem_ref = builder.ins().insertlane(mem_ref, attr_val, 2); // it is needed, because addr may >= (1<<24), attr < (1<<24)
                 state.push1(mem_ref);
@@ -232,8 +263,24 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             // state.push_block(next, 0, 0);
 
             let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
+            let addr = builder.ins().extractlane(mem_ref, 0);
+            let base = builder.ins().extractlane(mem_ref, 1);
             let size = builder.ins().extractlane(mem_ref, 2);
             let attr = builder.ins().extractlane(mem_ref, 3);
+            // match environ.host_get_value_func_index() {
+            //     Some(funcIdx) => {
+            //         let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
+            //         let args: &mut [Value] = &mut [size];
+            //         let call = environ.translate_call(
+            //             builder.cursor(),
+            //             FuncIndex::from_u32(funcIdx),
+            //             fref,
+            //             args,
+            //         )?;
+            //
+            //     }
+            //     None => {}
+            // }
 
             let has_metadata = builder.ins().band_imm(attr, 0x20i64);
             let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
@@ -245,12 +292,12 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let narrow_upper = builder.ins().uadd_overflow_trap(narrow_base, narrow_size, ir::TrapCode::IntegerOverflow);
 
             // check
-            let base = builder.ins().extractlane(mem_ref, 1);
             let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
             // base is no need to check, it comes from mref.field 0
             // if narrow_upper > upper, trap
             let is_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, upper);
             let is_trap = builder.ins().band(has_metadata, is_trap);
+
             // TODO:need a new TrapCode here
             builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
 
@@ -260,7 +307,8 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
 
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_size, 2);
-
+            let attr = builder.ins().bor_imm(attr, 0x04i64); // sub-obj
+            let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
 
             // end block
             // let frame = state.control_stack.pop().unwrap();
@@ -274,22 +322,34 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         Operator::MemrefMSStore { memarg } => {
             // let mut mem_arg = memarg.clone();
             let val = optionally_bitcast_vector(state.pop1(), I32X4, builder);
-            let mem_ref = state.pop1();
+            let mem_ref = optionally_bitcast_vector(state.pop1(), I32X4, builder);
             let addr = builder.ins().extractlane(val, 0);
             translate_msstore(mem_ref, memarg, ir::Opcode::Store, addr, builder, state, environ)?;
             // val's metadata
             let base = builder.ins().extractlane(val, 1);
             let size = builder.ins().extractlane(val, 2);
             let attr = builder.ins().extractlane(val, 3);
-            // size = size & (attr << 24)
+            // size = size | (attr << 24)
             let attr = builder.ins().ishl_imm(attr, 24i64);
             let size = builder.ins().bor(size, attr);
 
+            // let cmpxxx = builder.ins().icmp_imm(IntCC::Equal, size, 0x20000008i64);
+            // builder.ins().trapnz(cmpxxx, TrapCode::UnreachableCodeReached);
             // store metadata
             if let Some(funcIdx) = environ.host_set_value_func_index() {
-                let metadata = builder.ins().iconcat(base, size);
+                // let metadata = builder.ins().iconcat(base, size); not implement iconcat
+                let metadata = builder.ins().uextend(I64, size);
+                let new_base = builder.ins().uextend(I64, base);
+                let new_base = builder.ins().ishl_imm(new_base, 32i64);
+                let metadata = builder.ins().bor(metadata, new_base);
                 let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
                 let args :&mut[Value] = &mut[addr, metadata];
+                bitcast_wasm_params(
+                    environ,
+                    builder.func.dfg.ext_funcs[fref].signature,
+                    args,
+                    builder,
+                );
                 let call = environ.translate_call(
                     builder.cursor(),
                     FuncIndex::from_u32(funcIdx),
@@ -2819,6 +2879,12 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
                 // let metadata = builder.ins().iconcat(base, size);
                 let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
                 let args: &mut [Value] = &mut [addr];
+                bitcast_wasm_params(
+                    environ,
+                    builder.func.dfg.ext_funcs[fref].signature,
+                    args,
+                    builder,
+                );
                 let call = environ.translate_call(
                     builder.cursor(),
                     FuncIndex::from_u32(funcIdx),
@@ -2839,7 +2905,11 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
                     state.reachable = false;
                     return Ok(());
                 };
-                let (base, size) = builder.ins().isplit(metadata);
+
+                // let (base, size) = builder.ins().isplit(metadata); // only implement for i128
+                let size = builder.ins().ireduce(I32, metadata);
+                let base = builder.ins().ushr_imm(metadata, 32i64);
+                let base = builder.ins().ireduce(I32, base);
                 // attr = (size&0xff000000) >>24, size = size & 0xffffff
                 let attr = builder.ins().band_imm(size, 0xff000000i64);//TODO:
                 let attr = builder.ins().ushr_imm(attr, 24i64);

@@ -161,6 +161,30 @@ lazy_static! {
     static ref METADATA_MAP: Mutex<HashMap<i32, i64>> = Mutex::new(HashMap::new());
 }
 
+fn __host__set_value(key: i32, value:i64) {
+    // println!("set k:{:X}", key);
+    // println!("set v:{:X}", value);
+    let mut map = METADATA_MAP.lock().unwrap();
+    match map.get(&key) {
+        None => {
+            map.insert(key, value);
+        }
+        Some(v) => {
+            if (value & 0x04000000) == 0 {
+                map.insert(key, value);
+            }
+        }
+    }
+}
+
+fn __host__get_value(key: i32) -> i64 {
+    // println!("get k:{:X}", key);
+    let map = METADATA_MAP.lock().unwrap();
+    let ret = *map.get(&key).unwrap_or(&0i64);
+    // println!("get v:{:X}", ret);
+    ret
+}
+
 impl RunCommand {
     /// Executes the command.
     pub fn execute(&self) -> Result<()> {
@@ -214,14 +238,8 @@ impl RunCommand {
 
         // test: add my host function
         METADATA_MAP.lock().unwrap().clear();
-        linker.func_wrap("__host", "__set_value", move |key: i32, value: i64| {
-            let mut map = METADATA_MAP.lock().unwrap();
-            map.insert(key, value);
-        })?;
-        linker.func_wrap("__host", "__get_value",   move |key: i32| -> i64 {
-            let map = METADATA_MAP.lock().unwrap();
-            *map.get(&key).unwrap_or(&0i64) // 返回0如果key不存在
-        })?;
+        linker.func_wrap("__host", "__set_value", __host__set_value)?;
+        linker.func_wrap("__host", "__get_value", __host__get_value)?;
         // Load the main wasm module.
         match self
             .load_main_module(&mut store, &mut linker)
