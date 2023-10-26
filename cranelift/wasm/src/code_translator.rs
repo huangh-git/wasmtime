@@ -197,36 +197,36 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                 let mem_ref = builder.ins().insertlane(mem_ref, end, 2); // insert size/end
                 state.push1(mem_ref);
 
-                if let Some(funcIdx) = environ.host_set_value_func_index() {
-                    // let metadata = builder.ins().iconcat(base, size); not implement iconcat
-                    let metadata = builder.ins().uextend(I64, size);
-                    let new_base = builder.ins().uextend(I64, addr);
-                    let new_base = builder.ins().ishl_imm(new_base, 32i64);
-                    let metadata = builder.ins().bor(metadata, new_base);
-                    let metadata = builder.ins().bor_imm(metadata, (*attr as i64)<<24);
-                    let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
-                    let args :&mut[Value] = &mut[addr, metadata];
-                    bitcast_wasm_params(
-                        environ,
-                        builder.func.dfg.ext_funcs[fref].signature,
-                        args,
-                        builder,
-                    );
-                    let call = environ.translate_call(
-                        builder.cursor(),
-                        FuncIndex::from_u32(funcIdx),
-                        fref,
-                        args,
-                    )?;
-                    let inst_results = builder.inst_results(call);
-                    debug_assert_eq!(
-                        inst_results.len(),
-                        builder.func.dfg.signatures[builder.func.dfg.ext_funcs[fref].signature]
-                            .returns
-                            .len(),
-                        "translate_call results should match the call signature"
-                    );
-                }
+                // if let Some(funcIdx) = environ.host_set_value_func_index() {
+                //     // let metadata = builder.ins().iconcat(base, size); not implement iconcat
+                //     let metadata = builder.ins().uextend(I64, size);
+                //     let new_base = builder.ins().uextend(I64, addr);
+                //     let new_base = builder.ins().ishl_imm(new_base, 32i64);
+                //     let metadata = builder.ins().bor(metadata, new_base);
+                //     let metadata = builder.ins().bor_imm(metadata, (*attr as i64)<<24);
+                //     let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
+                //     let args :&mut[Value] = &mut[addr, metadata];
+                //     bitcast_wasm_params(
+                //         environ,
+                //         builder.func.dfg.ext_funcs[fref].signature,
+                //         args,
+                //         builder,
+                //     );
+                //     let call = environ.translate_call(
+                //         builder.cursor(),
+                //         FuncIndex::from_u32(funcIdx),
+                //         fref,
+                //         args,
+                //     )?;
+                //     let inst_results = builder.inst_results(call);
+                //     debug_assert_eq!(
+                //         inst_results.len(),
+                //         builder.func.dfg.signatures[builder.func.dfg.ext_funcs[fref].signature]
+                //             .returns
+                //             .len(),
+                //         "translate_call results should match the call signature"
+                //     );
+                // }
             } else {
                 let mem_ref = builder.ins().insertlane(mem_ref, addr, 2); // it is needed, because addr may >= (1<<24), attr < (1<<24)
                 state.push1(mem_ref);
@@ -261,39 +261,39 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             // let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
             // state.push_block(next, 0, 0);
 
-            let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
-            let addr = builder.ins().extractlane(mem_ref, 0);
-            let base = builder.ins().extractlane(mem_ref, 1);
-            let end = builder.ins().extractlane(mem_ref, 2);
-            let attr = builder.ins().extractlane(mem_ref, 3);
+            // let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
+            // let addr = builder.ins().extractlane(mem_ref, 0);
+            // let base = builder.ins().extractlane(mem_ref, 1);
+            // let end = builder.ins().extractlane(mem_ref, 2);
+            // let attr = builder.ins().extractlane(mem_ref, 3);
+            //
+            // let has_metadata = builder.ins().band_imm(attr, 0x20i64);
+            // let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
+            // // do nothing if there is no metadata
+            // // translate_br_if(0, builder, state);
+            //
+            // // else check
+            // let narrow_size = builder.ins().iconst(I32, *narrow_size as i64);
+            // let narrow_upper = builder.ins().uadd_overflow_trap(narrow_base, narrow_size, ir::TrapCode::IntegerOverflow);
 
-            let has_metadata = builder.ins().band_imm(attr, 0x20i64);
-            let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
-            // do nothing if there is no metadata
-            // translate_br_if(0, builder, state);
-
-            // else check
-            let narrow_size = builder.ins().iconst(I32, *narrow_size as i64);
-            let narrow_upper = builder.ins().uadd_overflow_trap(narrow_base, narrow_size, ir::TrapCode::IntegerOverflow);
-
-            // check
-            // let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
-            // base is no need to check, it comes from mref.field 0
-            // if narrow_upper > upper, trap
-            let is_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, end);
-            let is_trap = builder.ins().band(has_metadata, is_trap);
-
-            // TODO:need a new TrapCode here
-            builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
-
-            // if size is zero
-            let zero_size = builder.ins().iconst(I32, 0);
-            let narrow_size = builder.ins().select(has_metadata, narrow_size, zero_size);
-
-            let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
-            let mem_ref = builder.ins().insertlane(mem_ref, narrow_upper, 2);
-            let attr = builder.ins().bor_imm(attr, 0x04i64); // sub-obj
-            let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
+            // // check
+            // // let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
+            // // base is no need to check, it comes from mref.field 0
+            // // if narrow_upper > upper, trap
+            // let is_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, end);
+            // let is_trap = builder.ins().band(has_metadata, is_trap);
+            //
+            // // TODO:need a new TrapCode here
+            // builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
+            //
+            // // if size is zero
+            // let zero_size = builder.ins().iconst(I32, 0);
+            // let narrow_size = builder.ins().select(has_metadata, narrow_size, zero_size);
+            //
+            // let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
+            // let mem_ref = builder.ins().insertlane(mem_ref, narrow_upper, 2);
+            // let attr = builder.ins().bor_imm(attr, 0x04i64); // sub-obj
+            // let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
 
             // end block
             // let frame = state.control_stack.pop().unwrap();
@@ -2709,13 +2709,26 @@ fn prepare_ms_addr<FE>(
     let base = builder.ins().extractlane(mem_ref, 1);
     let end = builder.ins().extractlane(mem_ref, 2);
     let attr = builder.ins().extractlane(mem_ref, 3);
-
-    // check
-    let has_metadata = builder.ins().band_imm(attr, 0x20i64); // true if has_metadata
-    let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
     let addr_base = if memarg.offset != 0 {
         builder.ins().iadd_imm(addr, memarg.offset as i64)
     }else { addr };
+
+    // create block
+    let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
+    state.push_block(next, 0, 0);
+
+    // check
+    let has_metadata = builder.ins().band_imm(attr, 0x20i64); // true if has_metadata
+    let has_metadata = builder.ins().icmp_imm(IntCC::Equal, has_metadata, 0);
+
+    // translate_br_if(0, builder, state);
+    let (br_destination, inputs) = translate_br_if_args(0, state);
+    canonicalise_then_brnz(builder, has_metadata, br_destination, inputs);
+    let next_block = builder.create_block();
+    canonicalise_then_jump(builder, next_block, &[]);
+    builder.seal_block(next_block); // The only predecessor is the current block.
+    builder.switch_to_block(next_block);
+
     // try to touch memory [addr_base...addr_upper]
     let addr_upper = builder.ins().iadd_imm(addr_base, i64::from(access_size as i32));
     // can touch memory [base...upper]
@@ -2724,17 +2737,23 @@ fn prepare_ms_addr<FE>(
     let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
     let may_trap = builder.ins().bor(cmp_upper_trap, cmp_base_trap);
 
-    let is_trap = builder.ins().band(has_metadata, may_trap);
-    builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
-
-    let heap = state.get_heap(builder.func, memarg.memory, environ)?;
-    let heap = environ.heaps()[heap].clone();
+    // let is_trap = builder.ins().band(has_metadata, may_trap);
+    builder.ins().trapnz(may_trap, ir::TrapCode::HeapOutOfBounds);
 
     // TODO:if no metadata, check here
     // if memarg.memory == 0 {
     //     bounds_check_only(builder, environ, &heap, upper)?;
     // }
 
+    // end block
+    let frame = state.control_stack.pop().unwrap();
+    let next_block = frame.following_code();
+    canonicalise_then_jump(builder, next_block, &[]);
+    builder.switch_to_block(next_block);
+    builder.seal_block(next_block);
+
+    let heap = state.get_heap(builder.func, memarg.memory, environ)?;
+    let heap = environ.heaps()[heap].clone();
     let addr = bounds_checks::compute_addr_with_no_bounds_check(
         builder,
         environ,
