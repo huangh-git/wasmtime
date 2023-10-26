@@ -257,7 +257,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         }
         Operator::MemrefNarrow {narrow_size} => {
             let (narrow_base, mem_ref) = state.pop2();
-            // create block
+// create block
             // let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
             // state.push_block(next, 0, 0);
 
@@ -2710,12 +2710,26 @@ fn prepare_ms_addr<FE>(
     let end = builder.ins().extractlane(mem_ref, 2);
     let attr = builder.ins().extractlane(mem_ref, 3);
 
-    // check
-    let has_metadata = builder.ins().band_imm(attr, 0x20i64); // true if has_metadata
-    let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
     let addr_base = if memarg.offset != 0 {
         builder.ins().iadd_imm(addr, memarg.offset as i64)
     }else { addr };
+
+    // new block
+    let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
+    state.push_block(next, 0, 0);
+
+    // check
+    let has_metadata = builder.ins().band_imm(attr, 0x20i64); // true if has_metadata
+    let no_metadata = builder.ins().icmp_imm(IntCC::Equal, has_metadata, 0);
+
+    // translate_br_if(0, builder, state); break if no metadata
+    let (br_destination, inputs) = translate_br_if_args(0, state);
+    canonicalise_then_brnz(builder, no_metadata, br_destination, inputs);
+    let next_block = builder.create_block();
+    canonicalise_then_jump(builder, next_block, &[]);
+    builder.seal_block(next_block); // The only predecessor is the current block.
+    builder.switch_to_block(next_block);
+
     // try to touch memory [addr_base...addr_upper]
     let addr_upper = builder.ins().iadd_imm(addr_base, i64::from(access_size as i32));
     // can touch memory [base...upper]
@@ -2724,8 +2738,15 @@ fn prepare_ms_addr<FE>(
     let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
     let may_trap = builder.ins().bor(cmp_upper_trap, cmp_base_trap);
 
-    let is_trap = builder.ins().band(has_metadata, may_trap);
-    builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
+    // let is_trap = builder.ins().band(has_metadata, may_trap);
+    builder.ins().trapnz(may_trap, ir::TrapCode::HeapOutOfBounds);
+
+    // end block
+    let frame = state.control_stack.pop().unwrap();
+    let next_block = frame.following_code();
+    canonicalise_then_jump(builder, next_block, &[]);
+    builder.switch_to_block(next_block);
+    builder.seal_block(next_block);
 
     let heap = state.get_heap(builder.func, memarg.memory, environ)?;
     let heap = environ.heaps()[heap].clone();
