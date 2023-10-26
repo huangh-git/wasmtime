@@ -141,7 +141,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
     match op {
         /********************************** MemRef ****************************************
          *  MemRef are treated as I32x4
-         *  I32x4.0 = addr, I32x4.1 = base, I32x4.2 = size, I32x4.3 = attr
+         *  I32x4.0 = addr, I32x4.1 = base, I32x4.2 = size/end, I32x4.3 = attr
          *  be careful for load/store and call instructions
          ***********************************************************************************/
         Operator::MemrefSelect {} => {
@@ -186,16 +186,15 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let mem_ref = builder.ins().splat(I32X4, addr); // insert addr and base
             let attr_val = builder.ins().iconst(I32, *attr as i64);
             let mem_ref = builder.ins().insertlane(mem_ref, attr_val, 3);// insert attr
-            if (*attr & 0x20) == 0x20 {
-                // metadata is valid, so check the base+size
-                let upper = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::IntegerOverflow);
+            if (*attr & 0x20) == 0x20 { // metadata is valid, so check the base+size
+                let end = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::IntegerOverflow);
                 let heap = state.get_heap(builder.func, 0, environ)?; // index 0
                 let heap = environ.heaps()[heap].clone();
-                bounds_check_only(builder, environ, &heap, upper)?;
+                bounds_check_only(builder, environ, &heap, end)?;
                 // TODO:check size
                 // let size_check = builder.ins().band_imm(size, 0xff000000i64);
                 // builder.ins().trapnz(size_check, ir::TrapCode::HeapOutOfBounds);
-                let mem_ref = builder.ins().insertlane(mem_ref, size, 2); // insert size
+                let mem_ref = builder.ins().insertlane(mem_ref, end, 2); // insert size/end
                 state.push1(mem_ref);
 
                 if let Some(funcIdx) = environ.host_set_value_func_index() {
@@ -229,7 +228,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                     );
                 }
             } else {
-                let mem_ref = builder.ins().insertlane(mem_ref, attr_val, 2); // it is needed, because addr may >= (1<<24), attr < (1<<24)
+                let mem_ref = builder.ins().insertlane(mem_ref, addr, 2); // it is needed, because addr may >= (1<<24), attr < (1<<24)
                 state.push1(mem_ref);
             }
 
@@ -265,22 +264,8 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
             let addr = builder.ins().extractlane(mem_ref, 0);
             let base = builder.ins().extractlane(mem_ref, 1);
-            let size = builder.ins().extractlane(mem_ref, 2);
+            let end = builder.ins().extractlane(mem_ref, 2);
             let attr = builder.ins().extractlane(mem_ref, 3);
-            // match environ.host_get_value_func_index() {
-            //     Some(funcIdx) => {
-            //         let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
-            //         let args: &mut [Value] = &mut [size];
-            //         let call = environ.translate_call(
-            //             builder.cursor(),
-            //             FuncIndex::from_u32(funcIdx),
-            //             fref,
-            //             args,
-            //         )?;
-            //
-            //     }
-            //     None => {}
-            // }
 
             let has_metadata = builder.ins().band_imm(attr, 0x20i64);
             let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
@@ -292,10 +277,10 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let narrow_upper = builder.ins().uadd_overflow_trap(narrow_base, narrow_size, ir::TrapCode::IntegerOverflow);
 
             // check
-            let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
+            // let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
             // base is no need to check, it comes from mref.field 0
             // if narrow_upper > upper, trap
-            let is_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, upper);
+            let is_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, end);
             let is_trap = builder.ins().band(has_metadata, is_trap);
 
             // TODO:need a new TrapCode here
@@ -306,7 +291,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let narrow_size = builder.ins().select(has_metadata, narrow_size, zero_size);
 
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
-            let mem_ref = builder.ins().insertlane(mem_ref, narrow_size, 2);
+            let mem_ref = builder.ins().insertlane(mem_ref, narrow_upper, 2);
             let attr = builder.ins().bor_imm(attr, 0x04i64); // sub-obj
             let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
 
@@ -327,9 +312,10 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             translate_msstore(mem_ref, memarg, ir::Opcode::Store, addr, builder, state, environ)?;
             // val's metadata
             let base = builder.ins().extractlane(val, 1);
-            let size = builder.ins().extractlane(val, 2);
+            let end = builder.ins().extractlane(val, 2);
             let attr = builder.ins().extractlane(val, 3);
             // size = size | (attr << 24)
+            let size = builder.ins().isub(end, base);
             let attr = builder.ins().ishl_imm(attr, 24i64);
             let size = builder.ins().bor(size, attr);
 
@@ -2721,7 +2707,7 @@ fn prepare_ms_addr<FE>(
     // memref: addr-0, base-1, size-2, attr-3
     let addr = builder.ins().extractlane(mem_ref, 0);
     let base = builder.ins().extractlane(mem_ref, 1);
-    let size = builder.ins().extractlane(mem_ref, 2);
+    let end = builder.ins().extractlane(mem_ref, 2);
     let attr = builder.ins().extractlane(mem_ref, 3);
 
     // check
@@ -2733,8 +2719,8 @@ fn prepare_ms_addr<FE>(
     // try to touch memory [addr_base...addr_upper]
     let addr_upper = builder.ins().iadd_imm(addr_base, i64::from(access_size as i32));
     // can touch memory [base...upper]
-    let upper = builder.ins().iadd(base, size);
-    let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, addr_upper, upper);
+    // let upper = builder.ins().iadd(base, size);
+    let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, addr_upper, end);
     let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
     let may_trap = builder.ins().bor(cmp_upper_trap, cmp_base_trap);
 
@@ -2744,9 +2730,10 @@ fn prepare_ms_addr<FE>(
     let heap = state.get_heap(builder.func, memarg.memory, environ)?;
     let heap = environ.heaps()[heap].clone();
 
-    if memarg.memory == 0 {
-        bounds_check_only(builder, environ, &heap, upper)?;
-    }
+    // TODO:if no metadata, check here
+    // if memarg.memory == 0 {
+    //     bounds_check_only(builder, environ, &heap, upper)?;
+    // }
 
     let addr = bounds_checks::compute_addr_with_no_bounds_check(
         builder,
@@ -2906,7 +2893,6 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
                     return Ok(());
                 };
 
-                // let (base, size) = builder.ins().isplit(metadata); // only implement for i128
                 let size = builder.ins().ireduce(I32, metadata);
                 let base = builder.ins().ushr_imm(metadata, 32i64);
                 let base = builder.ins().ireduce(I32, base);
@@ -2914,10 +2900,11 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
                 let attr = builder.ins().band_imm(size, 0xff000000i64);//TODO:
                 let attr = builder.ins().ushr_imm(attr, 24i64);
                 let size = builder.ins().band_imm(size, 0x00ffffffi64);
+                let end = builder.ins().iadd(base, size);
                 // restore the value
                 let mem_ref = builder.ins().splat(I32X4, addr);
                 let mem_ref = builder.ins().insertlane(mem_ref, base, 1);
-                let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
+                let mem_ref = builder.ins().insertlane(mem_ref, end, 2);
                 let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
                 state.push1(mem_ref);
             }
@@ -2929,40 +2916,6 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
                 state.push1(mem_ref);
             }
         };
-        // memArg.memory = 1;
-        // let base = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
-        //     Some(v) => v,
-        //     None => {
-        //         state.reachable = false;
-        //         return Ok(());
-        //     }
-        // };
-        // memArg.memory = 2;
-        // let size = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
-        //     Some(v) => v,
-        //     None => {
-        //         state.reachable = false;
-        //         return Ok(());
-        //     }
-        // };
-        // memArg.memory = 3;
-        // let attr = match translate_msload_helper(mem_ref, &memArg, ir::Opcode::Load, I32, builder, state, environ)? {
-        //     Some(v) => v,
-        //     None => {
-        //         state.reachable = false;
-        //         return Ok(());
-        //     }
-        // };
-        // if !state.reachable {
-        //     return Ok(());
-        // }
-        // let (base, size) = builder.ins().isplit(metadata);
-        // let mem_ref = builder.ins().splat(I32X4, attr);
-        // let mem_ref = builder.ins().insertlane(mem_ref, addr, 0);
-        // let mem_ref = builder.ins().insertlane(mem_ref, base, 1);
-        // let mem_ref = builder.ins().insertlane(mem_ref, size, 2);
-        //
-        // state.push1(mem_ref);
     }
     return Ok(());
 }
