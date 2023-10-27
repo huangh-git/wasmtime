@@ -317,6 +317,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             // size = size | (attr << 24)
             let size = builder.ins().isub(end, base);
             let attr = builder.ins().ishl_imm(attr, 24i64);
+            let size = builder.ins().band_imm(size, 0xffffff);
             let size = builder.ins().bor(size, attr);
 
             // let cmpxxx = builder.ins().icmp_imm(IntCC::Equal, size, 0x20000008i64);
