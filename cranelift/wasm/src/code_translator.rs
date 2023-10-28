@@ -228,7 +228,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                     );
                 }
             } else {
-                let mem_ref = builder.ins().insertlane(mem_ref, addr, 2); // it is needed, because addr may >= (1<<24), attr < (1<<24)
+                let mem_ref = builder.ins().insertlane(mem_ref, attr_val, 2); // it is needed, because addr may >= (1<<24), attr < (1<<24)
                 state.push1(mem_ref);
             }
 
