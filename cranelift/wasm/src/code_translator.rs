@@ -2697,6 +2697,7 @@ fn prepare_ms_addr<FE>(
     builder: &mut FunctionBuilder,
     state: &mut FuncTranslationState,
     environ: &mut FE,
+    no_check: bool,
 ) -> WasmResult<Option<(MemFlags, Value)>>
     where
         FE: FuncEnvironment + ?Sized,
@@ -2714,43 +2715,44 @@ fn prepare_ms_addr<FE>(
     let addr_base = if memarg.offset != 0 {
         builder.ins().iadd_imm(addr, memarg.offset as i64)
     }else { addr };
-
-    // new block
-    let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
-    state.push_block(next, 0, 0);
-
-    // check
-    let has_metadata = builder.ins().band_imm(attr, 0x20i64); // true if has_metadata
-    let no_metadata = builder.ins().icmp_imm(IntCC::Equal, has_metadata, 0);
-
-    // translate_br_if(0, builder, state); break if no metadata
-    let (br_destination, inputs) = translate_br_if_args(0, state);
-    canonicalise_then_brnz(builder, no_metadata, br_destination, inputs);
-    let next_block = builder.create_block();
-    canonicalise_then_jump(builder, next_block, &[]);
-    builder.seal_block(next_block); // The only predecessor is the current block.
-    builder.switch_to_block(next_block);
-
-    // try to touch memory [addr_base...addr_upper]
-    let addr_upper = builder.ins().iadd_imm(addr_base, i64::from(access_size as i32));
-    // can touch memory [base...upper]
-    // let upper = builder.ins().iadd(base, size);
-    let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, addr_upper, end);
-    let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
-    let may_trap = builder.ins().bor(cmp_upper_trap, cmp_base_trap);
-
-    // let is_trap = builder.ins().band(has_metadata, may_trap);
-    builder.ins().trapnz(may_trap, ir::TrapCode::HeapOutOfBounds);
-
-    // end block
-    let frame = state.control_stack.pop().unwrap();
-    let next_block = frame.following_code();
-    canonicalise_then_jump(builder, next_block, &[]);
-    builder.switch_to_block(next_block);
-    builder.seal_block(next_block);
-
     let heap = state.get_heap(builder.func, memarg.memory, environ)?;
     let heap = environ.heaps()[heap].clone();
+
+    if !no_check {
+        // new block
+        let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
+        state.push_block(next, 0, 0);
+
+        // check
+        let has_metadata = builder.ins().band_imm(attr, 0x20i64); // true if has_metadata
+        let no_metadata = builder.ins().icmp_imm(IntCC::Equal, has_metadata, 0);
+
+        // translate_br_if(0, builder, state); break if no metadata
+        let (br_destination, inputs) = translate_br_if_args(0, state);
+        canonicalise_then_brnz(builder, no_metadata, br_destination, inputs);
+        let next_block = builder.create_block();
+        canonicalise_then_jump(builder, next_block, &[]);
+        builder.seal_block(next_block); // The only predecessor is the current block.
+        builder.switch_to_block(next_block);
+
+        // try to touch memory [addr_base...addr_upper]
+        let addr_upper = builder.ins().iadd_imm(addr_base, i64::from(access_size as i32));
+        // can touch memory [base...upper]
+        // let upper = builder.ins().iadd(base, size);
+        let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, addr_upper, end);
+        let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
+        let may_trap = builder.ins().bor(cmp_upper_trap, cmp_base_trap);
+
+        // let is_trap = builder.ins().band(has_metadata, may_trap);
+        builder.ins().trapnz(may_trap, ir::TrapCode::HeapOutOfBounds);
+
+        // end block
+        let frame = state.control_stack.pop().unwrap();
+        let next_block = frame.following_code();
+        canonicalise_then_jump(builder, next_block, &[]);
+        builder.switch_to_block(next_block);
+        builder.seal_block(next_block);
+    }
 
     // TODO:if no metadata, check here
     // if memarg.memory == 0 {
@@ -2952,7 +2954,7 @@ fn translate_msload_helper<FE: FuncEnvironment + ?Sized>(
     environ: &mut FE,
 ) -> WasmResult<Option<Value>> {
     let (flags, base) =
-        match prepare_ms_addr(mem_ref, memarg,  mem_op_size(opcode, result_ty), builder, state, environ)?{
+        match prepare_ms_addr(mem_ref, memarg,  mem_op_size(opcode, result_ty), builder, state, environ, true)?{
             None => {
                 state.reachable = false;
                 return Ok(None);
@@ -3000,7 +3002,7 @@ fn translate_msstore<FE: FuncEnvironment + ?Sized>(
     let val_ty = builder.func.dfg.value_type(val);
     let (flags, base) = unwrap_or_return_unreachable_state!(
         state,
-        prepare_ms_addr(mem_ref, memarg, mem_op_size(opcode, val_ty), builder, state, environ)?
+        prepare_ms_addr(mem_ref, memarg, mem_op_size(opcode, val_ty), builder, state, environ, false)?
     );
     builder.ins()
         .Store(opcode, val_ty, flags, Offset32::new(0), val, base);
