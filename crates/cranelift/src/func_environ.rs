@@ -837,6 +837,10 @@ impl<'module_environment> cranelift_wasm::FuncEnvironment for FuncEnvironment<'m
         self.translation.metadata_get_value_func
     }
 
+    fn store_check_only(&self) -> bool {
+        self.tunables.store_check_only
+    }
+
     fn heaps(&self) -> &PrimaryMap<Heap, HeapData> {
         &self.heaps
     }

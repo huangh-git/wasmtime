@@ -88,6 +88,10 @@ pub struct RunCommand {
     #[clap(long = "trap-unknown-imports")]
     trap_unknown_imports: bool,
 
+    /// store check only option
+    #[clap(long = "store-check-only")]
+    store_check_only: bool,
+
     /// Allow executing precompiled WebAssembly modules as `*.cwasm` files.
     ///
     /// Note that this option is not safe to pass if the module being passed in
@@ -204,6 +208,9 @@ impl RunCommand {
         let mut config = self.common.config(None)?;
         if self.wasm_timeout.is_some() {
             config.epoch_interruption(true);
+        }
+        if self.store_check_only {
+            config.store_check_only(true);
         }
         let engine = Engine::new(&config)?;
         let mut store = Store::new(&engine, Host::default());

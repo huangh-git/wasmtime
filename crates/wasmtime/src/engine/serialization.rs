@@ -319,6 +319,7 @@ impl Metadata {
             debug_adapter_modules: _,
 
             mem_ref: _,
+            store_check_only: _,
         } = self.tunables;
 
         Self::check_int(

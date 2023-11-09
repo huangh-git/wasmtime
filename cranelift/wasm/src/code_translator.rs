@@ -2954,7 +2954,7 @@ fn translate_msload_helper<FE: FuncEnvironment + ?Sized>(
     environ: &mut FE,
 ) -> WasmResult<Option<Value>> {
     let (flags, base) =
-        match prepare_ms_addr(mem_ref, memarg,  mem_op_size(opcode, result_ty), builder, state, environ, true)?{
+        match prepare_ms_addr(mem_ref, memarg,  mem_op_size(opcode, result_ty), builder, state, environ, environ.store_check_only())?{
             None => {
                 state.reachable = false;
                 return Ok(None);

@@ -96,6 +96,11 @@ pub trait FuncEnvironment: TargetEnvironment {
         None
     }
 
+    /// Is we do store check only for memref
+    fn store_check_only(&self) -> bool {
+        false
+    }
+
     /// Is the given parameter of the given function a wasm-level parameter, as opposed to a hidden
     /// parameter added for use by the implementation?
     fn is_wasm_parameter(&self, signature: &ir::Signature, index: usize) -> bool {

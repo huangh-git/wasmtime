@@ -48,6 +48,9 @@ pub struct Tunables {
 
     /// for memref type
     pub mem_ref: bool,
+
+    /// store check only
+    pub store_check_only: bool,
 }
 
 impl Default for Tunables {
@@ -95,6 +98,7 @@ impl Default for Tunables {
             generate_address_map: true,
             debug_adapter_modules: false,
             mem_ref: true,
+            store_check_only: false,
         }
     }
 }
