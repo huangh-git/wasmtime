@@ -2718,7 +2718,10 @@ fn prepare_ms_addr<FE>(
     let heap = state.get_heap(builder.func, memarg.memory, environ)?;
     let heap = environ.heaps()[heap].clone();
 
-    if !no_check {
+    let no_check_flag:u8    = 0x01; // 0000 0001
+    let lower_check_flag:u8 = 0x02; // 0000 0010
+    let upper_check_flag:u8 = 0x04; // 0000 0100
+    if !no_check || (memarg.metadata & no_check_flag) != 0 {
         // new block
         let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
         state.push_block(next, 0, 0);
@@ -2739,10 +2742,15 @@ fn prepare_ms_addr<FE>(
         let addr_upper = builder.ins().iadd_imm(addr_base, i64::from(access_size as i32));
         // can touch memory [base...upper]
         // let upper = builder.ins().iadd(base, size);
-        let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, addr_upper, end);
-        let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
-        let may_trap = builder.ins().bor(cmp_upper_trap, cmp_base_trap);
-
+        let may_trap = if (memarg.metadata & lower_check_flag) != 0 {
+            builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base)
+        } else if (memarg.metadata & upper_check_flag) != 0 {
+            builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base)
+        } else {
+            let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, addr_upper, end);
+            let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
+            builder.ins().bor(cmp_upper_trap, cmp_base_trap)
+        };
         // let is_trap = builder.ins().band(has_metadata, may_trap);
         builder.ins().trapnz(may_trap, ir::TrapCode::HeapOutOfBounds);
 
