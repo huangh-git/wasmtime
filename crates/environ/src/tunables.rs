@@ -51,6 +51,9 @@ pub struct Tunables {
 
     /// store check only
     pub store_check_only: bool,
+
+    /// upper check only
+    pub upper_check_only: bool,
 }
 
 impl Default for Tunables {
@@ -99,6 +102,7 @@ impl Default for Tunables {
             debug_adapter_modules: false,
             mem_ref: true,
             store_check_only: false,
+            upper_check_only: false,
         }
     }
 }

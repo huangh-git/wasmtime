@@ -841,6 +841,10 @@ impl<'module_environment> cranelift_wasm::FuncEnvironment for FuncEnvironment<'m
         self.tunables.store_check_only
     }
 
+    fn upper_check_only(&self) -> bool {
+        self.tunables.upper_check_only
+    }
+
     fn heaps(&self) -> &PrimaryMap<Heap, HeapData> {
         &self.heaps
     }

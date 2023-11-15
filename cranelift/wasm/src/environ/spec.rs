@@ -96,8 +96,13 @@ pub trait FuncEnvironment: TargetEnvironment {
         None
     }
 
-    /// Is we do store check only for memref
+    /// If we do store check only for memref
     fn store_check_only(&self) -> bool {
+        false
+    }
+
+    /// if we do upper bound check only for memref
+    fn upper_check_only(&self) -> bool {
         false
     }
 

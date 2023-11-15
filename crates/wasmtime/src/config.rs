@@ -1566,6 +1566,12 @@ impl Config {
         self.tunables.store_check_only = set_value;
         self
     }
+
+    /// upper bound check only
+    pub fn upper_check_only(&mut self, set_value: bool) -> &mut Self {
+        self.tunables.upper_check_only = set_value;
+        self
+    }
 }
 
 fn round_up_to_pages(val: u64) -> u64 {

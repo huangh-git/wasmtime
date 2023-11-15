@@ -92,6 +92,10 @@ pub struct RunCommand {
     #[clap(long = "store-check-only")]
     store_check_only: bool,
 
+    /// upper bound check only option
+    #[clap(long = "upper-check-only")]
+    upper_check_only: bool,
+
     /// Allow executing precompiled WebAssembly modules as `*.cwasm` files.
     ///
     /// Note that this option is not safe to pass if the module being passed in
@@ -211,6 +215,9 @@ impl RunCommand {
         }
         if self.store_check_only {
             config.store_check_only(true);
+        }
+        if self.upper_check_only {
+            config.upper_check_only(true);
         }
         let engine = Engine::new(&config)?;
         let mut store = Store::new(&engine, Host::default());

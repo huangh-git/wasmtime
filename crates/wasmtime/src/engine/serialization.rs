@@ -320,6 +320,7 @@ impl Metadata {
 
             mem_ref: _,
             store_check_only: _,
+            upper_check_only: _,
         } = self.tunables;
 
         Self::check_int(

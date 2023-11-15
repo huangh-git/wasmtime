@@ -2743,11 +2743,11 @@ fn prepare_ms_addr<FE>(
         // try to touch memory [addr_base...addr_upper]
         // can touch memory [base...upper]
         // let upper = builder.ins().iadd(base, size);
-        let may_trap = if (memarg.metadata & lower_check_flag) != 0 { // only do lower check
-            builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base)
-        } else if (memarg.metadata & upper_check_flag) != 0 { // only do upper check
+        let may_trap = if (memarg.metadata & upper_check_flag) != 0 || (environ.upper_check_only() && (memarg.metadata & lower_check_flag) == 0){ // only do upper check
             builder.ins().icmp(IntCC::UnsignedGreaterThan, addr_upper, end)
-        } else {
+        } else if (memarg.metadata & lower_check_flag) != 0 { // only do lower check
+            builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base)
+        }  else {
             let cmp_upper_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, addr_upper, end);
             let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
             builder.ins().bor(cmp_upper_trap, cmp_base_trap)
