@@ -2730,6 +2730,7 @@ fn prepare_ms_addr<FE>(
 
         // check
         let has_metadata = builder.ins().band_imm(attr, 0x20i64); // true if has_metadata
+        let has_metadata = builder.ins().icmp_imm(IntCC::Equal, has_metadata, 0x20i64);
         // let no_metadata = builder.ins().icmp_imm(IntCC::Equal, has_metadata, 0);
 
         // translate_br_if(0, builder, state); break if no metadata
