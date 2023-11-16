@@ -2725,21 +2725,21 @@ fn prepare_ms_addr<FE>(
     let addr_upper = builder.ins().iadd_imm(addr_base, i64::from(access_size as i32));
     if !no_check && (memarg.metadata & no_check_flag) == 0 { // not store only check and doesn't has no check flag
         // new block
-        // let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
-        // state.push_block(next, 0, 0);
+        let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
+        state.push_block(next, 0, 0);
 
         // check
         let has_metadata = builder.ins().band_imm(attr, 0x20i64); // true if has_metadata
-        let has_metadata = builder.ins().icmp_imm(IntCC::Equal, has_metadata, 0x20i64);
-        // let no_metadata = builder.ins().icmp_imm(IntCC::Equal, has_metadata, 0);
+        // let has_metadata = builder.ins().icmp_imm(IntCC::Equal, has_metadata, 0x20i64);
+        let no_metadata = builder.ins().icmp_imm(IntCC::Equal, has_metadata, 0);
 
         // translate_br_if(0, builder, state); break if no metadata
-        // let (br_destination, inputs) = translate_br_if_args(0, state);
-        // canonicalise_then_brnz(builder, no_metadata, br_destination, inputs);
-        // let next_block = builder.create_block();
-        // canonicalise_then_jump(builder, next_block, &[]);
-        // builder.seal_block(next_block); // The only predecessor is the current block.
-        // builder.switch_to_block(next_block);
+        let (br_destination, inputs) = translate_br_if_args(0, state);
+        canonicalise_then_brnz(builder, no_metadata, br_destination, inputs);
+        let next_block = builder.create_block();
+        canonicalise_then_jump(builder, next_block, &[]);
+        builder.seal_block(next_block); // The only predecessor is the current block.
+        builder.switch_to_block(next_block);
 
         // try to touch memory [addr_base...addr_upper]
         // can touch memory [base...upper]
@@ -2753,15 +2753,15 @@ fn prepare_ms_addr<FE>(
             let cmp_base_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, base, addr_base);
             builder.ins().bor(cmp_upper_trap, cmp_base_trap)
         };
-        let may_trap = builder.ins().band(has_metadata, may_trap);
+        // let may_trap = builder.ins().band(has_metadata, may_trap);
         builder.ins().trapnz(may_trap, ir::TrapCode::HeapOutOfBounds);
 
         // end block
-        // let frame = state.control_stack.pop().unwrap();
-        // let next_block = frame.following_code();
-        // canonicalise_then_jump(builder, next_block, &[]);
-        // builder.switch_to_block(next_block);
-        // builder.seal_block(next_block);
+        let frame = state.control_stack.pop().unwrap();
+        let next_block = frame.following_code();
+        canonicalise_then_jump(builder, next_block, &[]);
+        builder.switch_to_block(next_block);
+        builder.seal_block(next_block);
     } else {
         bounds_check_only(builder, environ, &heap, addr_upper)?;
     }
