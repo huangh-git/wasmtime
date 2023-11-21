@@ -116,6 +116,13 @@ macro_rules! unwrap_or_return_unreachable_state {
     };
 }
 
+
+    // attr flag
+const HasMetadataFlag:u8 = 0x20; // 0010 0000
+const ValidPointerFlag:u8 = 0x10; // 0001 0000
+const HeapVariableFlag:u8 = 0x02; // 0000 0010
+const GlobalVariableFlag:u8 = 0x01; // 0000 0001
+
 // Clippy warns about "align: _" but its important to document that the flags field is ignored
 #[cfg_attr(
     feature = "cargo-clippy",
@@ -157,6 +164,9 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let value = builder.ins().vconst(I8X16, handle);
             // the v128.const is typed in CLIF as a I8x16 but bitcast to a different type
             // before use
+            let value = optionally_bitcast_vector(value, I32X4, builder);
+            let attr_val = builder.ins().iconst(I32, HasMetadataFlag as i64);
+            let value = builder.ins().insertlane(value, attr_val, 3);
             state.push1(value);
         }
         Operator::MemrefNe {} => {
@@ -2718,6 +2728,7 @@ fn prepare_ms_addr<FE>(
     let heap = state.get_heap(builder.func, memarg.memory, environ)?;
     let heap = environ.heaps()[heap].clone();
 
+    // msload/msstore flag
     let no_check_flag:u8    = 0x01; // 0000 0001
     let lower_check_flag:u8 = 0x02; // 0000 0010
     let upper_check_flag:u8 = 0x04; // 0000 0100
