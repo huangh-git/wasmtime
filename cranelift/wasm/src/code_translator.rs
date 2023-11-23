@@ -191,6 +191,9 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             // memref const can not in code section
             builder.ins().trap(ir::TrapCode::UnreachableCodeReached);
         }
+        Operator::MemrefDealloc {info} => {
+            let mref = state.pop1();
+        }
         Operator::MemrefAlloc {attr} => {
             let (addr, size) = state.pop2();
             let mem_ref = builder.ins().splat(I32X4, addr); // insert addr and base
