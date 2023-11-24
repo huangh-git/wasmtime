@@ -122,6 +122,7 @@ const HasMetadataFlag:u8 = 0x20; // 0010 0000
 const ValidPointerFlag:u8 = 0x10; // 0001 0000
 const HeapVariableFlag:u8 = 0x02; // 0000 0010
 const GlobalVariableFlag:u8 = 0x01; // 0000 0001
+const SubObjFlag:u8 = 0x04;
 
 // Clippy warns about "align: _" but its important to document that the flags field is ignored
 #[cfg_attr(
@@ -199,7 +200,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let mem_ref = builder.ins().splat(I32X4, addr); // insert addr and base
             let attr_val = builder.ins().iconst(I32, *attr as i64);
             let mem_ref = builder.ins().insertlane(mem_ref, attr_val, 3);// insert attr
-            if (*attr & 0x20) == 0x20 { // metadata is valid, so check the base+size
+            if (*attr & (HasMetadataFlag as u32)) != 0 { // metadata is valid, so check the base+size
                 let end = builder.ins().uadd_overflow_trap(addr, size, ir::TrapCode::IntegerOverflow);
                 let heap = state.get_heap(builder.func, 0, environ)?; // index 0
                 let heap = environ.heaps()[heap].clone();
@@ -211,14 +212,14 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                 state.push1(mem_ref);
 
                 if let Some(funcIdx) = environ.host_set_value_func_index() {
-                    // let metadata = builder.ins().iconcat(base, size); not implement iconcat
-                    let metadata = builder.ins().uextend(I64, size);
-                    let new_base = builder.ins().uextend(I64, addr);
-                    let new_base = builder.ins().ishl_imm(new_base, 32i64);
-                    let metadata = builder.ins().bor(metadata, new_base);
-                    let metadata = builder.ins().bor_imm(metadata, (*attr as i64)<<24);
+                    // let metadata = builder.ins().uextend(I64, size);
+                    // let new_base = builder.ins().uextend(I64, addr);
+                    // let new_base = builder.ins().ishl_imm(new_base, 32i64);
+                    // let metadata = builder.ins().bor(metadata, new_base);
+                    // let metadata = builder.ins().bor_imm(metadata, (*attr as i64)<<24);
+                    let zero_val = builder.ins().iconst(I32, 0);
                     let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
-                    let args :&mut[Value] = &mut[addr, metadata];
+                    let args :&mut[Value] = &mut[addr, addr, end, attr_val, zero_val];
                     bitcast_wasm_params(
                         environ,
                         builder.func.dfg.ext_funcs[fref].signature,
@@ -280,7 +281,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let end = builder.ins().extractlane(mem_ref, 2);
             let attr = builder.ins().extractlane(mem_ref, 3);
 
-            let has_metadata = builder.ins().band_imm(attr, 0x20i64);
+            let has_metadata = builder.ins().band_imm(attr, HasMetadataFlag as i64);
             let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
             // do nothing if there is no metadata
             // translate_br_if(0, builder, state);
@@ -305,7 +306,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
 
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
             let mem_ref = builder.ins().insertlane(mem_ref, narrow_upper, 2);
-            let attr = builder.ins().bor_imm(attr, 0x04i64); // sub-obj
+            let attr = builder.ins().bor_imm(attr, SubObjFlag as i64); // sub-obj
             let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
 
             // end block
@@ -328,22 +329,22 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let end = builder.ins().extractlane(val, 2);
             let attr = builder.ins().extractlane(val, 3);
             // size = size | (attr << 24)
-            let size = builder.ins().isub(end, base);
-            let attr = builder.ins().ishl_imm(attr, 24i64);
-            let size = builder.ins().band_imm(size, 0xffffff);
-            let size = builder.ins().bor(size, attr);
+            // let size = builder.ins().isub(end, base);
+            // let attr = builder.ins().ishl_imm(attr, 24i64);
+            // let size = builder.ins().band_imm(size, 0xffffff);
+            // let size = builder.ins().bor(size, attr);
 
             // let cmpxxx = builder.ins().icmp_imm(IntCC::Equal, size, 0x20000008i64);
             // builder.ins().trapnz(cmpxxx, TrapCode::UnreachableCodeReached);
             // store metadata
             if let Some(funcIdx) = environ.host_set_value_func_index() {
-                // let metadata = builder.ins().iconcat(base, size); not implement iconcat
-                let metadata = builder.ins().uextend(I64, size);
-                let new_base = builder.ins().uextend(I64, base);
-                let new_base = builder.ins().ishl_imm(new_base, 32i64);
-                let metadata = builder.ins().bor(metadata, new_base);
+                // let metadata = builder.ins().uextend(I64, size);
+                // let new_base = builder.ins().uextend(I64, base);
+                // let new_base = builder.ins().ishl_imm(new_base, 32i64);
+                // let metadata = builder.ins().bor(metadata, new_base);
+                let imm_val = builder.ins().iconst(I32, memarg.metadata as i64);
                 let (fref, num_args) = state.get_direct_func(builder.func, funcIdx, environ)?;
-                let args :&mut[Value] = &mut[addr, metadata];
+                let args :&mut[Value] = &mut[addr, base, end, attr, imm_val];
                 bitcast_wasm_params(
                     environ,
                     builder.func.dfg.ext_funcs[fref].signature,
@@ -2940,13 +2941,13 @@ fn translate_msload<FE: FuncEnvironment + ?Sized>(
                     return Ok(());
                 };
 
-                let size = builder.ins().ireduce(I32, metadata);
+                let size_attr = builder.ins().ireduce(I32, metadata);
                 let base = builder.ins().ushr_imm(metadata, 32i64);
                 let base = builder.ins().ireduce(I32, base);
                 // attr = (size&0xff000000) >>24, size = size & 0xffffff
-                let attr = builder.ins().band_imm(size, 0xff000000i64);//TODO:
+                let attr = builder.ins().band_imm(size_attr, 0xff000000i64);//TODO:
                 let attr = builder.ins().ushr_imm(attr, 24i64);
-                let size = builder.ins().band_imm(size, 0x00ffffffi64);
+                let size = builder.ins().band_imm(size_attr, 0x00ffffffi64);
                 let end = builder.ins().iadd(base, size);
                 // restore the value
                 let mem_ref = builder.ins().splat(I32X4, addr);

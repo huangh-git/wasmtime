@@ -169,28 +169,29 @@ lazy_static! {
     static ref METADATA_MAP: Mutex<HashMap<i32, i64>> = Mutex::new(HashMap::new());
 }
 
-fn __host__set_value(key: i32, value:i64) {
-    // println!("set k:{:X}", key);
-    // println!("set v:{:X}", value);
+fn __host__set_value(addr: i32, base:i32, end:i32, attr:i32, imm:i32) {
+    // imm is store imm metadata
     let mut map = METADATA_MAP.lock().unwrap();
-    // check
-    if value & 0x20000000 != 0 {
-        let base = (value as u64 >> 32) as i32;
-        let size = (value & 0x00ffffff) as i32;
-        let upper = base + size;
-        if (key < base) || (key > upper) {
+    const SubObjFlag:i32 = 0x04;
+    const HasMetadataFlag:i32 = 0x20;
+    const NoCheckFlag:i32 = 0x01;
+    // check if has metadata and need check
+    if (attr & HasMetadataFlag) != 0 && (imm & NoCheckFlag) == 0 {
+        if (addr < base) || (addr > end) {
             eprintln!("Error:out of bounds when store metadata");
             process::exit(1);
         }
     }
 
-    match map.get(&key) {
+    match map.get(&addr) {
         None => {
-            map.insert(key, value);
+            let value = ((base as i64) << 32) | (((end - base) | (attr << 24)) as i64);
+            map.insert(addr, value);
         }
         Some(v) => {
-            if (value & 0x04000000) == 0 {
-                map.insert(key, value);
+            if (attr & SubObjFlag) == 0 {
+                let value = ((base as i64) << 32) | ( ((end - base) | (attr << 24)) as i64);
+                map.insert(addr, value);
             }
         }
     }
