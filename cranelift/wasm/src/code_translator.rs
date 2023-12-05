@@ -274,48 +274,49 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
 // create block
             // let next = block_with_params(builder, std::iter::empty::<ValType>(), environ)?;
             // state.push_block(next, 0, 0);
+            if (narrow_size & 0x08000000) == 0{ // if need check
+                let narrow_size = &(*narrow_size & 0xf7ffffff);
+                let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
+                let addr = builder.ins().extractlane(mem_ref, 0);
+                let base = builder.ins().extractlane(mem_ref, 1);
+                let end = builder.ins().extractlane(mem_ref, 2);
+                let attr = builder.ins().extractlane(mem_ref, 3);
 
-            let mem_ref = optionally_bitcast_vector(mem_ref, I32X4, builder);
-            let addr = builder.ins().extractlane(mem_ref, 0);
-            let base = builder.ins().extractlane(mem_ref, 1);
-            let end = builder.ins().extractlane(mem_ref, 2);
-            let attr = builder.ins().extractlane(mem_ref, 3);
+                let has_metadata = builder.ins().band_imm(attr, HasMetadataFlag as i64);
+                let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
+                // do nothing if there is no metadata
+                // translate_br_if(0, builder, state);
 
-            let has_metadata = builder.ins().band_imm(attr, HasMetadataFlag as i64);
-            let has_metadata = builder.ins().icmp_imm(IntCC::NotEqual, has_metadata, 0);
-            // do nothing if there is no metadata
-            // translate_br_if(0, builder, state);
+                // else check
+                let narrow_size = builder.ins().iconst(I32, *narrow_size as i64);
+                let narrow_upper = builder.ins().uadd_overflow_trap(narrow_base, narrow_size, ir::TrapCode::IntegerOverflow);
 
-            // else check
-            let narrow_size = builder.ins().iconst(I32, *narrow_size as i64);
-            let narrow_upper = builder.ins().uadd_overflow_trap(narrow_base, narrow_size, ir::TrapCode::IntegerOverflow);
+                // check
+                // let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
+                // base is no need to check, it comes from mref.field 0
+                // if narrow_upper > upper, trap
+                let is_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, end);
+                let is_trap = builder.ins().band(has_metadata, is_trap);
 
-            // check
-            // let upper = builder.ins().uadd_overflow_trap(base, size, ir::TrapCode::IntegerOverflow);
-            // base is no need to check, it comes from mref.field 0
-            // if narrow_upper > upper, trap
-            let is_trap = builder.ins().icmp(IntCC::UnsignedGreaterThan, narrow_upper, end);
-            let is_trap = builder.ins().band(has_metadata, is_trap);
+                // TODO:need a new TrapCode here
+                builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
 
-            // TODO:need a new TrapCode here
-            builder.ins().trapnz(is_trap, ir::TrapCode::HeapOutOfBounds);
+                // if size is zero
+                let zero_size = builder.ins().iconst(I32, 0);
+                let narrow_size = builder.ins().select(has_metadata, narrow_size, zero_size);
 
-            // if size is zero
-            let zero_size = builder.ins().iconst(I32, 0);
-            let narrow_size = builder.ins().select(has_metadata, narrow_size, zero_size);
+                let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
+                let mem_ref = builder.ins().insertlane(mem_ref, narrow_upper, 2);
+                let attr = builder.ins().bor_imm(attr, SubObjFlag as i64); // sub-obj
+                let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
 
-            let mem_ref = builder.ins().insertlane(mem_ref, narrow_base, 1);
-            let mem_ref = builder.ins().insertlane(mem_ref, narrow_upper, 2);
-            let attr = builder.ins().bor_imm(attr, SubObjFlag as i64); // sub-obj
-            let mem_ref = builder.ins().insertlane(mem_ref, attr, 3);
-
-            // end block
-            // let frame = state.control_stack.pop().unwrap();
-            // let next_block = frame.following_code();
-            // canonicalise_then_jump(builder, next_block, &[]);
-            // builder.switch_to_block(next_block);
-            // builder.seal_block(next_block);
-
+                // end block
+                // let frame = state.control_stack.pop().unwrap();
+                // let next_block = frame.following_code();
+                // canonicalise_then_jump(builder, next_block, &[]);
+                // builder.switch_to_block(next_block);
+                // builder.seal_block(next_block);
+            }
             state.push1(mem_ref);
         }
         Operator::MemrefMSStore { memarg } => {
